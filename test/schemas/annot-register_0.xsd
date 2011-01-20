@@ -1,0 +1,87 @@
+<!-- 
+requires -DREGISTER_ANNOTATIONS, which enables this API:
+  /**
+   * annotationParseEvent - app callback when XML Schema parser encounters an
+   * annotation attribute or appinfo element. The app may accept or discard the
+   * annotation. Discarding will disable subsequent callbacks for that element.
+   * 
+   * @loc: a location context which can be passed to the app again when
+   * validating such an element in an XML document.
+   * @ns: the namespace of the annotated attribute.
+   * @lname: the localname of the annotated attribute.
+   * @node: the DOM node of the annotation. For an annotation attribute,
+   *        this will be the DOM attribute node; for an appinfo element,
+   *        it will be that element in the appinfo.
+   *
+   * @returns: true: accepted, false: discard.
+   */
+  typedef bool (annotationParseEvent)(LOCATION loc, namespace ns,
+                                      localname lname, NODE node);
+
+  /**
+   * validateAnnotatedElement - app callback after XML Schema validator
+   * validates an annotated element.
+   * 
+   * @loc: a location context which was passed to the app during schema parsing
+   *       via the annotationParseEvent callback.
+   * @node: the DOM node of the element being validated.
+   */
+  typedef void (validateAnnotatedElement)(LOCATION loc, NODE node);
+
+  /**
+   * generateAnnotatedElement - app callback after XML Schema validator
+   * generates an annotated element.
+   * 
+   * @loc: a location context which was passed to the app during schema parsing
+   *       via the annotationParseEvent callback.
+   * @returns: the new DOM node for the generated element.
+   */
+  typedef Node (generateAnnotatedElement)(LOCATION loc);
+
+  ErrCode register_annotationCallbacks(annotationParseEvent* p,
+                                       validateAnnotatedElement* v,
+                                       generatedAnnotatedElement* g);
+
+
+  annotationParseEvent ParseEvt;
+  validateAnnotatedElement Validate;
+  generatedAnnotatedElement Generate;
+
+  bool ParseEvt (LOCATION loc, namespace ns, localname lname, NODE node) {
+    printf("ParseEvt(%x, %s, %s)\n", loc, ns, node->toString());
+    return true;
+  }
+  void Validate (LOCATION loc, NODE node) {
+    printf("Validate(%x, %s)\n", loc, node->toString());
+  }
+  Node Generate (LOCATION loc) {
+    printf("Generate(%x)\n", loc());
+    return createNode(...);
+  }
+  register_annotationCallbacks(&ParseEvt, &Validate, &Generate);
+ -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+elementFormDefault="qualified" attributeFormDefault="unqualified">
+<xs:element name="dn_len_list" xmlns:foo="bar" foo:bar="baz">
+<xs:complexType>
+  <xs:sequence maxOccurs="3">
+      <xs:element name="dn_length" minOccurs="0">
+          <xs:annotation><xs:appinfo><foo:bar/></xs:appinfo>
+              <xs:documentation>Destination Number Length</xs:documentation>
+          </xs:annotation>
+          <xs:simpleType>
+              <xs:restriction base="xs:byte">
+                  <xs:minInclusive value="1"/>
+                  <xs:maxInclusive value="15"/>
+              </xs:restriction>
+          </xs:simpleType>
+      </xs:element>
+      <xs:element name="destroy" type="xs:byte" minOccurs="0">
+          <xs:annotation>
+              <xs:documentation>destroy flag</xs:documentation>
+          </xs:annotation>
+      </xs:element>
+  </xs:sequence>
+</xs:complexType>
+</xs:element>
+</xs:schema>
