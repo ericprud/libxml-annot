@@ -60,13 +60,14 @@ requires -DREGISTER_ANNOTATIONS, which enables this API:
   }
   register_annotationCallbacks(&ParseEvt, &Validate, &Generate);
  -->
+<!-- register annot handler Foo -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
 elementFormDefault="qualified" attributeFormDefault="unqualified">
-<xs:element name="dn_len_list" xmlns:foo="bar" foo:bar="baz">
+<xs:element name="person" xmlns:my="myNamespace" my:myLocalName="print age"><!-- ParseEvt("myNamespace", "myLocalName", 0xcafefeeb, "print age") { TheHandlers[0xcafefeeb] = "print age"; } -->
 <xs:complexType>
   <xs:sequence maxOccurs="3">
-      <xs:element name="dn_length" minOccurs="0">
-          <xs:annotation><xs:appinfo><foo:bar/></xs:appinfo>
+      <xs:element name="fname" minOccurs="0">
+          <xs:annotation><xs:appinfo><my:element>print(.)</my:element></xs:appinfo>
               <xs:documentation>Destination Number Length</xs:documentation>
           </xs:annotation>
           <xs:simpleType>
@@ -75,10 +76,10 @@ elementFormDefault="qualified" attributeFormDefault="unqualified">
                   <xs:maxInclusive value="15"/>
               </xs:restriction>
           </xs:simpleType>
-      </xs:element>
-      <xs:element name="destroy" type="xs:byte" minOccurs="0">
+      </xs:element><!-- ParseEvt("myNamespace", "element", 0xbadbeef, "print(.)") { TheHandlers[0xbadbeef] = "print(.)"; } -->
+      <xs:element name="age" type="xs:byte" minOccurs="0">
           <xs:annotation>
-              <xs:documentation>destroy flag</xs:documentation>
+              <xs:documentation>age flag</xs:documentation>
           </xs:annotation>
       </xs:element>
   </xs:sequence>
