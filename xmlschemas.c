@@ -6476,6 +6476,45 @@ xmlSchemaParseLocalAttributes(xmlSchemaParserCtxtPtr ctxt, xmlSchemaPtr schema,
     return (0);
 }
 
+void (*erics_annotation_schema_callback)(void *) = NULL;
+
+static void annotation_callback(void *);
+
+static void annotation_callback(void *foo)
+{
+    xmlSchemaAnnotPtr annot = (xmlSchemaAnnotPtr)foo;
+    xmlNodePtr node;
+    xmlNodePtr child = NULL;
+
+    if (erics_annotation_schema_callback == NULL)
+        return;
+
+    printf(">>>>>>>>>>>>>>>> %s\n", __FUNCTION__);
+    printf("   ptr           = %p\n", foo);
+    printf("   next          = %p\n", (void *)annot->next);
+    printf("   content       = %p\n", (void *)annot->content);
+
+    node = annot->content;
+    printf("   node name     = \"%s\"\n", node->name);
+    printf("   node doc      = %p\n", (void *)node->doc);
+
+    child = node->children;
+    while (child != NULL) {
+	if (IS_SCHEMA(child, "appinfo")) {
+            printf("   appinfo content = \"%s\"\n", xmlNodeGetContent(child));
+        } else if (IS_SCHEMA(child, "documentation")) {
+            printf("   appinfo documentation = \"%s\"\n", xmlNodeGetContent(child));
+        }
+        child = child->next;
+    }
+
+    erics_annotation_schema_callback(foo);
+
+    printf("<<<<<<<<<<<<<<<< %s\n", __FUNCTION__);
+
+}
+
+
 /**
  * xmlSchemaParseAnnotation:
  * @ctxt:  a schema validation context
@@ -6592,6 +6631,8 @@ xmlSchemaParseAnnotation(xmlSchemaParserCtxtPtr ctxt, xmlNodePtr node, int neede
 	    child = child->next;
 	}
     }
+
+    annotation_callback(ret);
 
     return (ret);
 }
