@@ -8834,6 +8834,31 @@ declaration_part:
 	}
 	decl->annot = annot;
     }
+
+    /*
+     * Go through attributes at the end of xmlSchemaParseElement and do
+     * callbacks then.
+     */
+    {
+        xmlAttrPtr prop;
+        const xmlChar *content;
+
+	prop = node->properties;
+	while (prop != NULL) {
+            printf("==== Got property:  \"%s\"\n", prop->name);
+            if (prop->ns) {
+                /* Note that ns->prefix can be null. */
+                printf("     Got NS \"%s\":\"%s\"\n", prop->ns->prefix, prop->ns->href);
+                if (prop->ns->next != NULL)
+                    printf("     NS has next pointer!\n");
+            }
+            content = xmlSchemaGetNodeContent(ctxt, (xmlNodePtr) prop);
+            printf("     node content = \"%s\"\n", content);
+
+            prop = prop->next;
+        }
+    }
+
     /*
     * NOTE: Element Declaration Representation OK 4. will be checked at a
     * different layer.
