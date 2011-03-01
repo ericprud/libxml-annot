@@ -6480,6 +6480,12 @@ void (*erics_annotation_schema_callback)(void *) = NULL;
 
 static void annotation_callback(void *);
 
+/*
+ * MASON:
+ *
+ * This gets an xmlSchemaAnnotPtr as an argument.  It calls the
+ * callback with the parent of the AnnotPtr.
+ */
 static void annotation_callback(void *foo)
 {
     xmlSchemaAnnotPtr annot = (xmlSchemaAnnotPtr)foo;
@@ -6489,12 +6495,14 @@ static void annotation_callback(void *foo)
     if (erics_annotation_schema_callback == NULL)
         return;
 
-    printf(">>>>>>>>>>>>>>>> %s\n", __FUNCTION__);
+    printf("\n==== %s\n", __FUNCTION__);
+    printf("This is what I know about this annotation:\n");
     printf("   ptr           = %p\n", foo);
     printf("   next          = %p\n", (void *)annot->next);
     printf("   content       = %p\n", (void *)annot->content);
 
     node = annot->content;
+    printf("   node ptr      = %p\n", (void *)node);
     printf("   node name     = \"%s\"\n", node->name);
     printf("   node doc      = %p\n", (void *)node->doc);
 
@@ -6504,16 +6512,36 @@ static void annotation_callback(void *foo)
             printf("   appinfo content = \"%s\"\n", xmlNodeGetContent(child));
         } else if (IS_SCHEMA(child, "documentation")) {
             printf("   appinfo documentation = \"%s\"\n", xmlNodeGetContent(child));
-        }
+        } else
+            printf("   appinfo \"%s\"\n", child->name);
         child = child->next;
     }
 
-    erics_annotation_schema_callback(foo);
+    printf("   PARENT:\n");
 
-    printf("<<<<<<<<<<<<<<<< %s\n", __FUNCTION__);
+    node = annot->content->parent;
+    printf("   node ptr      = %p\n", (void *)node);
+    printf("   node name     = \"%s\"\n", node->name);
+    printf("   node doc      = %p\n", (void *)node->doc);
 
+    /* node->children appears to always be NULL here. */
+    child = node->children;
+    while (child != NULL) {
+	if (IS_SCHEMA(child, "appinfo")) {
+            printf("   appinfo content = \"%s\"\n", xmlNodeGetContent(child));
+        } else if (IS_SCHEMA(child, "documentation")) {
+            printf("   appinfo documentation = \"%s\"\n", xmlNodeGetContent(child));
+        } else if (IS_SCHEMA(child, "annotation")) {
+            printf("   appinfo annotation (see above)\n");
+        } else
+            printf("   appinfo \"%s\"\n", child->name);
+        
+        child = child->next;
+    }
+    printf("\n");
+
+    erics_annotation_schema_callback(annot->content->parent);
 }
-
 
 /**
  * xmlSchemaParseAnnotation:
@@ -8836,6 +8864,7 @@ declaration_part:
     }
 
     /*
+     * MASON:
      * Go through attributes at the end of xmlSchemaParseElement and do
      * callbacks then.
      */
@@ -8843,20 +8872,27 @@ declaration_part:
         xmlAttrPtr prop;
         const xmlChar *content;
 
+        printf("\n==== Walking property list for node \"%s\":\n", node->name);
 	prop = node->properties;
 	while (prop != NULL) {
-            printf("==== Got property:  \"%s\"\n", prop->name);
+            printf("     Got property:  \"%s\"\n", prop->name);
             if (prop->ns) {
+                /*
+                 * XXX FIXME:
+                 * Instead of ns->prefix I need to pass in the namespace for the prefix.
+                 * In this case it will be "myNameSpace".
+                 */
                 /* Note that ns->prefix can be null. */
-                printf("     Got NS \"%s\":\"%s\"\n", prop->ns->prefix, prop->ns->href);
+                printf("      Got NS \"%s\":\"%s\"\n", prop->ns->prefix, prop->ns->href);
                 if (prop->ns->next != NULL)
-                    printf("     NS has next pointer!\n");
+                    printf("      NS has next pointer!\n");
             }
             content = xmlSchemaGetNodeContent(ctxt, (xmlNodePtr) prop);
-            printf("     node content = \"%s\"\n", content);
+            printf("      node content = \"%s\"\n", content);
 
             prop = prop->next;
         }
+        printf("\n");
     }
 
     /*
