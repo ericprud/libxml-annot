@@ -25211,7 +25211,7 @@ xmlSchemaValidateElemDecl(xmlSchemaValidCtxtPtr vctxt)
     {
         xmlSchemaElementPtr elem;
 
-        printf("======> %s: There's an element here!\n", __FUNCTION__);
+        printf("\n======> %s: There's an element here!\n", __FUNCTION__);
         printf("        elem at %p\n", (void *)elemDecl);
         printf("        elem name: \"%s\"\n", elemDecl->name);
         printf("        annot ptr: %p\n", (void *)elemDecl->annot);
@@ -25225,7 +25225,9 @@ xmlSchemaValidateElemDecl(xmlSchemaValidCtxtPtr vctxt)
                 elem->mason_instance_callback(elem);
             } else
                 printf("===============> DID NOT find an instance callback!\n");
-        }
+        } else
+            printf("No annotation found here.\n");
+        printf("\n");
     }
 
     return (0);
