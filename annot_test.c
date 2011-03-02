@@ -6,17 +6,16 @@
 #include <libxml/schemasInternals.h>
 #include <libxml/tree.h>
 
+void walk_doc_tree(xmlNodePtr, int);
+void walk_schema_tree(xmlSchemaPtr);
+
 /*
-cc test.c -Iinclude .libs/libxml2.so
+ * It looks like the validation is done differently for SAX vs. DOM.
+ *
+ * See xmlSchemaVStart in xmlschemas.c
+ */
 
-LD_LIBRARY_PATH=./.libs/ ./a.out test/schemas/annot-register_0.xml
-
-*/
-
-extern void (*erics_annotation_schema_callback)(void *);
-
-
-char *type_names[] =
+const char *type_names[] =
 {
     "XML_INVALID_ELEMENT_0",
     "XML_ELEMENT_NODE",
@@ -42,6 +41,7 @@ char *type_names[] =
     "XML_DOCB_DOCUMENT_NODE",
 };
 
+
 /*
  * There are functions to get stuff out of node - such as xmlGetProp(node, xmlChar *name),
  * xmlNodeGetContent(), xmlGetNodePath(),
@@ -59,8 +59,8 @@ walk_doc_tree(xmlNodePtr node, int level)
             printf("  ");
         c = xmlNodeGetContent(node);
         printf("node %p type: %-20s node name: %-20s  content: \"%.40s\"\n",
-               node, type_names[node->type], node->name, c);
-        is_annotation = !strcmp(node->name, "annotation");
+               (void *)node, type_names[node->type], node->name, c);
+        is_annotation = !strcmp((char *)node->name, "annotation");
         if (is_annotation)
             printf("  Got an annotation!\n");
 
@@ -73,7 +73,7 @@ walk_doc_tree(xmlNodePtr node, int level)
 /*
  * struct _xmlSchemaAnnot {
  *    struct _xmlSchemaAnnot *next;
- *    xmlNodePtr content;         /* the annotation * /
+ *    xmlNodePtr content;         / * the annotation * /
  * };
  * can be member of:
  *  xmlSchemaAttribute
@@ -107,27 +107,69 @@ walk_doc_tree(xmlNodePtr node, int level)
  */
 
 void
-walk_schema_tree(xmlSchemaPtr xmlSchema)
+walk_schema_tree(xmlSchemaPtr xmlschema)
 {
     xmlDocPtr doc;
 
     printf("name = \"%s\", target namespace = \"%s\", version = \"%s\"\n",
-           xmlSchema->name, xmlSchema->targetNamespace, xmlSchema->version);
-    printf("docptr = %p\n", xmlSchema->doc);
-    printf("annot = %p\n", xmlSchema->annot);
+           xmlschema->name, xmlschema->targetNamespace, xmlschema->version);
+    printf("docptr = %p\n", (void *)xmlschema->doc);
+    printf("annot = %p\n", (void *)xmlschema->annot);
 
-    doc = xmlSchema->doc;
+    doc = xmlschema->doc;
 
     printf("doc->type = %d\n", doc->type);
-    printf("doc->children = %p\n", doc->children);
-    printf("doc->next = %p\n", doc->next);
+    printf("doc->children = %p\n", (void *)doc->children);
+    printf("doc->next = %p\n", (void *)doc->next);
     if (doc->children)
         walk_doc_tree(doc->children, 0);
 }
 
-void annotation_callback(void *foo)
+/*
+ * TODO 2-20:
+ *
+ * I should also get a callback for my:myLocalName, since it's a
+ * foreign namespace.
+ *
+ * walk through each attribute, ignore prefix, any that aren't in a
+ * known namespace get a callback too
+ *
+ * So far XMLSchema is the only known one.
+ *
+ * xmlAttr->ns has attribute namespace.
+ * xmlNode->ns has node namespace.
+ *
+ * Go through attributes at the end of xmlSchemaParseElement and do
+ * callbacks then.
+ */
+
+
+/*
+ * These are the two callbacks used by xmlschema.c.  These should be
+ * set via an API.
+ */
+extern void (*xmlSchemaAnnotationSchemaCallback)(void *);
+extern void (*xmlSchemaAnnotationInstanceCallback)(void *);
+
+void schema_annotation_callback(void *);
+void instance_annotation_callback(void *);
+
+/*
+ * This is called by annotation_callback() in xmlschemas.c when an
+ * annotation is encountered while reading the schema.
+ */
+void schema_annotation_callback(void *opaque)
 {
-    printf("******************************** %s: %p\n", __FUNCTION__, foo);
+    printf("\noooooooooooo %s: %p\n\n", __FUNCTION__, opaque);
+}
+
+/*
+ * This is called by ??? when reading an annotation is encountered
+ * while reading the instance data.
+ */
+void instance_annotation_callback(void *opaque)
+{
+    printf("\noooooooooooo %s: %p\n\n", __FUNCTION__, opaque);
 }
 
 int
@@ -140,11 +182,12 @@ main(int argc, char *argv[])
 
     if (argc != 2)
     {
-        printf("gimme arg.\n");
+        printf("Argument needed - the name, minus extension, of a schema and xml doc.\n");
         return -1;
     }        
 
-    erics_annotation_schema_callback = annotation_callback;
+    xmlSchemaAnnotationSchemaCallback = schema_annotation_callback;
+    xmlSchemaAnnotationInstanceCallback = instance_annotation_callback;
 
     /* Read the schema. */
     {
@@ -154,6 +197,7 @@ main(int argc, char *argv[])
         /* parserCtxt->ctxtType is xmlSchemaTypePtr */
 
         snprintf(filename, 100, "%s.xsd", argv[1]);
+        printf("\n\n\n----------------------------------------------------------------\n\n\n");
         printf("\n----> Reading schema %s...\n", filename);
 
 	parserCtxt = xmlSchemaNewParserCtxt(filename);
@@ -173,6 +217,7 @@ main(int argc, char *argv[])
     /* Read the XML. */
     {
         snprintf(filename, 100, "%s.xml", argv[1]);
+        printf("\n\n\n----------------------------------------------------------------\n\n\n");
         printf("\n----> Reading XML %s...\n", filename);
         if ((docPtr = xmlReadFile(filename, NULL, 0)) == NULL)
         {
@@ -187,6 +232,7 @@ main(int argc, char *argv[])
 	xmlSchemaValidCtxtPtr schemaCtxt;
 	int ret;
 
+        printf("\n\n\n----------------------------------------------------------------\n\n\n");
         printf("\n----> Validating document %s...\n", filename);
 
         /* This sets up the schemaCtxt, including a pointer to wxschemas. */
@@ -222,10 +268,12 @@ main(int argc, char *argv[])
 
     tree_trunk = docPtr->children;
 
+    printf("\n\n\n----------------------------------------------------------------\n\n\n");
     printf("\nWalking doc tree...\n");
     walk_doc_tree(tree_trunk, 0);
     printf("\n");
 
+    printf("\n\n\n----------------------------------------------------------------\n\n\n");
     printf("\nWalking schema tree...\n");
     walk_schema_tree(wxschemas);
     printf("\n");
@@ -235,6 +283,7 @@ main(int argc, char *argv[])
     /*****************************************************************/
     /*****************************************************************/
     /* This will tell me, for example, how to decode sequences. */
+    printf("\n\n\n----------------------------------------------------------------\n\n\n");
     xmlSchemaDump(stdout, wxschemas);
     /*****************************************************************/
     /*****************************************************************/

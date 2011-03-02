@@ -6476,9 +6476,13 @@ xmlSchemaParseLocalAttributes(xmlSchemaParserCtxtPtr ctxt, xmlSchemaPtr schema,
     return (0);
 }
 
-void (*erics_annotation_schema_callback)(void *) = NULL;
+/****************************************************************/
+/* MASON */
 
-static void annotation_callback(void *);
+void (*xmlSchemaAnnotationSchemaCallback)(void *) = NULL;
+void (*xmlSchemaAnnotationInstanceCallback)(void *) = NULL;
+
+static void xmlSchemaAnnotationCallback(void *);
 
 /*
  * MASON:
@@ -6486,13 +6490,14 @@ static void annotation_callback(void *);
  * This gets an xmlSchemaAnnotPtr as an argument.  It calls the
  * callback with the parent of the AnnotPtr.
  */
-static void annotation_callback(void *foo)
+static void xmlSchemaAnnotationCallback(void *foo)
 {
     xmlSchemaAnnotPtr annot = (xmlSchemaAnnotPtr)foo;
+    xmlSchemaElementPtr elem;
     xmlNodePtr node;
     xmlNodePtr child = NULL;
 
-    if (erics_annotation_schema_callback == NULL)
+    if (xmlSchemaAnnotationSchemaCallback == NULL)
         return;
 
     printf("\n==== %s\n", __FUNCTION__);
@@ -6505,6 +6510,7 @@ static void annotation_callback(void *foo)
     printf("   node ptr      = %p\n", (void *)node);
     printf("   node name     = \"%s\"\n", node->name);
     printf("   node doc      = %p\n", (void *)node->doc);
+    printf("   node type     = %d\n", node->type);
 
     child = node->children;
     while (child != NULL) {
@@ -6523,6 +6529,7 @@ static void annotation_callback(void *foo)
     printf("   node ptr      = %p\n", (void *)node);
     printf("   node name     = \"%s\"\n", node->name);
     printf("   node doc      = %p\n", (void *)node->doc);
+    printf("   node type     = %d\n", node->type);
 
     /* node->children appears to always be NULL here. */
     child = node->children;
@@ -6538,10 +6545,21 @@ static void annotation_callback(void *foo)
         
         child = child->next;
     }
+
+    elem = (xmlSchemaElementPtr)annot->content->parent;
+
+    elem->mason_instance_callback = xmlSchemaAnnotationInstanceCallback;
+    printf("======> Setting instance callback in struct at %p\n", (void *)elem);
+    printf("        elem annot ptr = %p\n", (void *)elem->annot);
+    printf("        annot ptr = %p\n", (void *)annot);
+
     printf("\n");
 
-    erics_annotation_schema_callback(annot->content->parent);
+    xmlSchemaAnnotationSchemaCallback(annot->content->parent);
 }
+
+/* MASON */
+/****************************************************************/
 
 /**
  * xmlSchemaParseAnnotation:
@@ -6660,7 +6678,7 @@ xmlSchemaParseAnnotation(xmlSchemaParserCtxtPtr ctxt, xmlNodePtr node, int neede
 	}
     }
 
-    annotation_callback(ret);
+    xmlSchemaAnnotationCallback(ret);
 
     return (ret);
 }
@@ -25189,6 +25207,26 @@ xmlSchemaValidateElemDecl(xmlSchemaValidCtxtPtr vctxt)
     * Remember the actual type definition.
     */
     vctxt->inode->typeDef = actualType;
+
+    {
+        xmlSchemaElementPtr elem;
+
+        printf("======> %s: There's an element here!\n", __FUNCTION__);
+        printf("        elem at %p\n", (void *)elemDecl);
+        printf("        elem name: \"%s\"\n", elemDecl->name);
+        printf("        annot ptr: %p\n", (void *)elemDecl->annot);
+
+        if (elemDecl->annot != NULL) {
+            elem = (xmlSchemaElementPtr)elemDecl->annot->content->parent;
+            printf("        contorted elem = %p\n", (void *)elem);
+        
+            if (elem->mason_instance_callback) {
+                printf("===============> Found an instance callback!\n");
+                elem->mason_instance_callback(elem);
+            } else
+                printf("===============> DID NOT find an instance callback!\n");
+        }
+    }
 
     return (0);
 }
