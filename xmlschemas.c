@@ -6476,13 +6476,14 @@ xmlSchemaParseLocalAttributes(xmlSchemaParserCtxtPtr ctxt, xmlSchemaPtr schema,
     return (0);
 }
 
+#ifndef DISABLE_NEW_STUFF
 /****************************************************************/
 /* MASON */
 
 void (*xmlSchemaAnnotationSchemaCallback)(void *) = NULL;
 void (*xmlSchemaAnnotationInstanceCallback)(void *) = NULL;
 
-static void xmlSchemaAnnotationCallback(void *);
+static void xmlSchemaAnnotationCallback(xmlSchemaAnnotPtr, xmlSchemaElementPtr);
 
 /*
  * MASON:
@@ -6490,10 +6491,8 @@ static void xmlSchemaAnnotationCallback(void *);
  * This gets an xmlSchemaAnnotPtr as an argument.  It calls the
  * callback with the parent of the AnnotPtr.
  */
-static void xmlSchemaAnnotationCallback(void *foo)
+static void xmlSchemaAnnotationCallback(xmlSchemaAnnotPtr annot, xmlSchemaElementPtr decl)
 {
-    xmlSchemaAnnotPtr annot = (xmlSchemaAnnotPtr)foo;
-    xmlSchemaElementPtr elem;
     xmlNodePtr node;
     xmlNodePtr child = NULL;
 
@@ -6502,7 +6501,7 @@ static void xmlSchemaAnnotationCallback(void *foo)
 
     printf("\n==== %s\n", __FUNCTION__);
     printf("This is what I know about this annotation:\n");
-    printf("   ptr           = %p\n", foo);
+    printf("   ptr           = %p\n", (void*)annot);
     printf("   next          = %p\n", (void *)annot->next);
     printf("   content       = %p\n", (void *)annot->content);
 
@@ -6546,11 +6545,9 @@ static void xmlSchemaAnnotationCallback(void *foo)
         child = child->next;
     }
 
-    elem = (xmlSchemaElementPtr)annot->content->parent;
-
-    elem->mason_instance_callback = xmlSchemaAnnotationInstanceCallback;
-    printf("======> Setting instance callback in struct at %p\n", (void *)elem);
-    printf("        elem annot ptr = %p\n", (void *)elem->annot);
+    decl->mason_instance_callback = xmlSchemaAnnotationInstanceCallback;
+    printf("======> Setting instance callback in struct at %p\n", (void *)decl);
+    printf("        decl annot ptr = %p\n", (void *)decl->annot);
     printf("        annot ptr = %p\n", (void *)annot);
 
     printf("\n");
@@ -6561,6 +6558,7 @@ static void xmlSchemaAnnotationCallback(void *foo)
 /* MASON */
 /****************************************************************/
 
+#endif /* DISABLE_NEW_STUFF */
 /**
  * xmlSchemaParseAnnotation:
  * @ctxt:  a schema validation context
@@ -6677,8 +6675,6 @@ xmlSchemaParseAnnotation(xmlSchemaParserCtxtPtr ctxt, xmlNodePtr node, int neede
 	    child = child->next;
 	}
     }
-
-    xmlSchemaAnnotationCallback(ret);
 
     return (ret);
 }
@@ -8879,7 +8875,12 @@ declaration_part:
 		"(unique | key | keyref)*))");
 	}
 	decl->annot = annot;
+#ifndef DISABLE_NEW_STUFF
+	if (annot != NULL)
+	    xmlSchemaAnnotationCallback(annot, decl);
+#endif /* DISABLE_NEW_STUFF */
     }
+#ifndef DISABLE_NEW_STUFF
 
     /*
      * MASON:
@@ -8913,6 +8914,7 @@ declaration_part:
         printf("\n");
     }
 
+#endif /* DISABLE_NEW_STUFF */
     /*
     * NOTE: Element Declaration Representation OK 4. will be checked at a
     * different layer.
@@ -25207,6 +25209,7 @@ xmlSchemaValidateElemDecl(xmlSchemaValidCtxtPtr vctxt)
     * Remember the actual type definition.
     */
     vctxt->inode->typeDef = actualType;
+#ifndef DISABLE_NEW_STUFF
 
     {
         xmlSchemaElementPtr elem;
@@ -25229,6 +25232,8 @@ xmlSchemaValidateElemDecl(xmlSchemaValidCtxtPtr vctxt)
             printf("No annotation found here.\n");
         printf("\n");
     }
+#endif /* DISABLE_NEW_STUFF */
+
 
     return (0);
 }
