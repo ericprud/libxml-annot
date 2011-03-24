@@ -6480,8 +6480,8 @@ xmlSchemaParseLocalAttributes(xmlSchemaParserCtxtPtr ctxt, xmlSchemaPtr schema,
 /****************************************************************/
 /* MASON */
 
-void (*xmlSchemaAnnotationSchemaCallback)(void *) = NULL;
-void (*xmlSchemaAnnotationInstanceCallback)(void *) = NULL;
+int (*xmlSchemaAnnotationSchemaCallback)(void *, xmlNodePtr) = NULL;
+int (*xmlSchemaAnnotationInstanceCallback)(void *, xmlNodePtr) = NULL;
 
 static void xmlSchemaAnnotationCallback(xmlSchemaAnnotPtr, xmlSchemaElementPtr);
 
@@ -6506,15 +6506,23 @@ static void xmlSchemaAnnotationCallback(xmlSchemaAnnotPtr annot, xmlSchemaElemen
     printf("   content       = %p\n", (void *)annot->content);
 
     node = annot->content;
-    printf("   node ptr      = %p\n", (void *)node);
-    printf("   node name     = \"%s\"\n", node->name);
-    printf("   node doc      = %p\n", (void *)node->doc);
-    printf("   node type     = %d\n", node->type);
 
     child = node->children;
     while (child != NULL) {
 	if (IS_SCHEMA(child, "appinfo")) {
-            printf("   appinfo content = \"%s\"\n", xmlNodeGetContent(child));
+	    xmlNodePtr appinfo = child->children;
+	    while (appinfo != NULL) {
+		printf("   appinfo ptr      = %p\n", (void *)appinfo);
+		if (appinfo->ns != NULL)
+		    printf("   appinfo ns     = \"%s\" (%s)\n", appinfo->ns->href, appinfo->ns->prefix);
+		printf("   appinfo name     = \"%s\"\n", appinfo->name);
+		printf("   appinfo doc      = %p\n", (void *)appinfo->doc);
+		printf("   appinfo type     = %d\n", appinfo->type);
+		if (xmlSchemaAnnotationSchemaCallback(decl, appinfo))
+		    decl->mason_instance_callback = xmlSchemaAnnotationInstanceCallback;
+		appinfo = appinfo->next;
+	    }
+            /* printf("   appinfo content = \"%s\"\n", xmlNodeGetContent(child)); */
         } else if (IS_SCHEMA(child, "documentation")) {
             printf("   appinfo documentation = \"%s\"\n", xmlNodeGetContent(child));
         } else
@@ -6545,14 +6553,12 @@ static void xmlSchemaAnnotationCallback(xmlSchemaAnnotPtr annot, xmlSchemaElemen
         child = child->next;
     }
 
-    decl->mason_instance_callback = xmlSchemaAnnotationInstanceCallback;
     printf("======> Setting instance callback in struct at %p\n", (void *)decl);
     printf("        decl annot ptr = %p\n", (void *)decl->annot);
     printf("        annot ptr = %p\n", (void *)annot);
 
     printf("\n");
 
-    xmlSchemaAnnotationSchemaCallback(annot->content->parent);
 }
 
 /* MASON */
@@ -8717,7 +8723,8 @@ declaration_part:
 
 		xmlSchemaPIllegalAttrErr(ctxt,
 		    XML_SCHEMAP_S4S_ATTR_NOT_ALLOWED, NULL, attr);
-	    }
+	    } else if (xmlSchemaAnnotationSchemaCallback(decl, attr))
+		decl->mason_instance_callback = xmlSchemaAnnotationInstanceCallback;
 	    attr = attr->next;
 	}
 	/*
@@ -25212,7 +25219,8 @@ xmlSchemaValidateElemDecl(xmlSchemaValidCtxtPtr vctxt)
 #ifndef DISABLE_NEW_STUFF
 
     {
-        xmlSchemaElementPtr elem;
+#if 0
+        xmlNodePtr elem;
 
         printf("\n======> %s: There's an element here!\n", __FUNCTION__);
         printf("        elem at %p\n", (void *)elemDecl);
@@ -25220,17 +25228,20 @@ xmlSchemaValidateElemDecl(xmlSchemaValidCtxtPtr vctxt)
         printf("        annot ptr: %p\n", (void *)elemDecl->annot);
 
         if (elemDecl->annot != NULL) {
-            elem = (xmlSchemaElementPtr)elemDecl->annot->content->parent;
+            elem = elemDecl->annot->content->parent;
             printf("        contorted elem = %p\n", (void *)elem);
-        
-            if (elem->mason_instance_callback) {
+#endif
+            if (elemDecl->mason_instance_callback != NULL) {
                 printf("===============> Found an instance callback!\n");
-                elem->mason_instance_callback(elem);
-            } else
+                elemDecl->mason_instance_callback(elemDecl, vctxt->inode->node);
+            }
+#if 0
+ else
                 printf("===============> DID NOT find an instance callback!\n");
         } else
             printf("No annotation found here.\n");
         printf("\n");
+#endif
     }
 #endif /* DISABLE_NEW_STUFF */
 

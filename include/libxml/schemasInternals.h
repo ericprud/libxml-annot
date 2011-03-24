@@ -760,7 +760,7 @@ struct _xmlSchemaType {
  */
 #define XML_SCHEMAS_ELEM_INTERNAL_CHECKED        1 << 18
 
-typedef void (*fptr)(void *); /* XXX mason */
+typedef int (*fptr)(void *, xmlNodePtr); /* XXX mason */
 
 typedef struct _xmlSchemaElement xmlSchemaElement;
 typedef xmlSchemaElement *xmlSchemaElementPtr;

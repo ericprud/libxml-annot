@@ -148,28 +148,32 @@ walk_schema_tree(xmlSchemaPtr xmlschema)
  * These are the two callbacks used by xmlschema.c.  These should be
  * set via an API.
  */
-extern void (*xmlSchemaAnnotationSchemaCallback)(void *);
-extern void (*xmlSchemaAnnotationInstanceCallback)(void *);
+extern int (*xmlSchemaAnnotationSchemaCallback)(void *, xmlNodePtr);
+extern int (*xmlSchemaAnnotationInstanceCallback)(void *, xmlNodePtr);
 
-void schema_annotation_callback(void *);
-void instance_annotation_callback(void *);
+int schema_annotation_callback(void *, xmlNodePtr);
+int instance_annotation_callback(void *, xmlNodePtr);
 
 /*
  * This is called by annotation_callback() in xmlschemas.c when an
  * annotation is encountered while reading the schema.
  */
-void schema_annotation_callback(void *opaque)
+int schema_annotation_callback(void *opaque, xmlNodePtr node)
 {
-    printf("\noooooooooooo %s: %p\n\n", __FUNCTION__, opaque);
+    xmlChar* content = xmlNodeGetContent(node);
+    printf("\noooooooooooo %s: %p \"%s\"\n\n", __FUNCTION__, opaque, content);
+    return 1;
 }
 
 /*
  * This is called by ??? when reading an annotation is encountered
  * while reading the instance data.
  */
-void instance_annotation_callback(void *opaque)
+int instance_annotation_callback(void *opaque, xmlNodePtr node)
 {
-    printf("\noooooooooooo %s: %p\n\n", __FUNCTION__, opaque);
+    xmlChar* content = xmlNodeGetContent(node);
+    printf("\noooooooooooo %s: %p \"%s\"\n\n", __FUNCTION__, opaque, content);
+    return 1;
 }
 
 int
