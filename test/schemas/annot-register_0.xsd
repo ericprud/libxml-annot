@@ -68,12 +68,12 @@ elementFormDefault="qualified" attributeFormDefault="unqualified">
   <xs:sequence maxOccurs="3">
       <xs:element name="fname" minOccurs="0" type="xs:string">
           <xs:annotation><xs:appinfo><my:element>print(.)</my:element></xs:appinfo>
-              <xs:documentation>Destination Number Length</xs:documentation>
+              <xs:documentation>first name</xs:documentation>
           </xs:annotation>
       </xs:element><!-- ParseEvt("myNamespace", "element", 0xbadbeef, "print(.)") { TheHandlers[0xbadbeef] = "print(.)"; } -->
       <xs:element name="age" type="xs:byte" minOccurs="0">
           <xs:annotation>
-              <xs:documentation>age flag</xs:documentation>
+              <xs:documentation>venerable age</xs:documentation>
           </xs:annotation>
       </xs:element>
   </xs:sequence>
