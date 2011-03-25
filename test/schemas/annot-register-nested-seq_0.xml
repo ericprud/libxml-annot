@@ -3,11 +3,11 @@
    /* given a schema validator v and some registered handles: */
    v.validate();
   -->
-<person xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:noNamespaceSchemaLocation="/proto/wsif/temp.xsd">
+<people xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="annot-register_0.xsd">
   <fname>Bob</fname>
   <age>44</age>
   <fname>Joe</fname>
   <age>88</age>
-</person>
+</people>
 

@@ -1,0 +1,33 @@
+<!-- 
+     docs moved to ../../annot_test.c
+ -->
+<!-- register annot handler Foo -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+	   xmlns:my="myNamespace"
+	   xmlns:their="theirNamespace"
+	   elementFormDefault="qualified"
+	   attributeFormDefault="unqualified">
+  <xs:element name="people" type="T_PersonSequence"/>
+
+  <xs:complexType name="T_PersonSequence">
+    <xs:sequence>
+      <xs:element name="person" type="T_Person" my:path="age" minOccurs="0"  maxOccurs="99" />
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="T_Person">
+    <xs:sequence>
+      <xs:element name="fname" type="xs:string">
+        <xs:annotation><xs:appinfo><my:path>.</my:path></xs:appinfo>
+          <xs:documentation>first name</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="age" type="xs:byte" minOccurs="0">
+        <xs:annotation>
+	  <xs:appinfo><their:path>..</their:path></xs:appinfo>
+          <xs:documentation>venerable age</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+   /* given a schema validator v and some registered handles: */
+   v.validate();
+  -->
+<people xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="annot-register_0.xsd">
+  <fname>Bob</fname>
+  <age>44</age>
+  <fname>Joe</fname>
+  <age>88</age>
+</people>
+

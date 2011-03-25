@@ -1,3 +1,7 @@
+/*
+ * ./annot_test test/schemas/annot-register-{nested,typed}{-seq,}_0
+ */
+
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
@@ -289,14 +293,11 @@ test (const char* base) {
     /* Read the XML. */
     {
         snprintf(filename, 100, "%s.xml", base);
-        printf("----------------------------------------------------------------\n");
-        printf("\n----> Reading XML %s...\n", filename);
         if ((docPtr = xmlReadFile(filename, NULL, 0)) == NULL)
         {
-            printf("That didn't work out.\n");
+            printf("failed to parse \"%s\".\n", filename);
             return -1;
         }
-        printf("<---- XML read!\n");
     }
 
     {
@@ -316,7 +317,7 @@ test (const char* base) {
 	ret = xmlSchemaValidateDoc(schemaCtxt, docPtr);	/* read me! */
 	if (ret == 0)
         {
-	    printf("%s validates\n", filename);
+	    /* printf("%s validates\n", filename); */
 	}
         else if (ret > 0)
         {
