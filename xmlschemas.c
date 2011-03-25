@@ -6499,11 +6499,13 @@ static void xmlSchemaAnnotationCallback(xmlSchemaAnnotPtr annot, xmlSchemaElemen
     if (xmlSchemaAnnotationSchemaCallback == NULL)
         return;
 
+#if 0
     printf("\n==== %s\n", __FUNCTION__);
     printf("This is what I know about this annotation:\n");
     printf("   ptr           = %p\n", (void*)annot);
     printf("   next          = %p\n", (void *)annot->next);
     printf("   content       = %p\n", (void *)annot->content);
+#endif
 
     node = annot->content;
 
@@ -6512,24 +6514,29 @@ static void xmlSchemaAnnotationCallback(xmlSchemaAnnotPtr annot, xmlSchemaElemen
 	if (IS_SCHEMA(child, "appinfo")) {
 	    xmlNodePtr appinfo = child->children;
 	    while (appinfo != NULL) {
+#if 0
 		printf("   appinfo ptr      = %p\n", (void *)appinfo);
 		if (appinfo->ns != NULL)
 		    printf("   appinfo ns     = \"%s\" (%s)\n", appinfo->ns->href, appinfo->ns->prefix);
 		printf("   appinfo name     = \"%s\"\n", appinfo->name);
 		printf("   appinfo doc      = %p\n", (void *)appinfo->doc);
 		printf("   appinfo type     = %d\n", appinfo->type);
+#endif
 		if (xmlSchemaAnnotationSchemaCallback(decl, appinfo))
 		    decl->mason_instance_callback = xmlSchemaAnnotationInstanceCallback;
 		appinfo = appinfo->next;
 	    }
             /* printf("   appinfo content = \"%s\"\n", xmlNodeGetContent(child)); */
         } else if (IS_SCHEMA(child, "documentation")) {
+#if 0
             printf("   appinfo documentation = \"%s\"\n", xmlNodeGetContent(child));
+#endif
         } else
             printf("   appinfo \"%s\"\n", child->name);
         child = child->next;
     }
 
+#if 0
     printf("   PARENT:\n");
 
     node = annot->content->parent;
@@ -6558,7 +6565,7 @@ static void xmlSchemaAnnotationCallback(xmlSchemaAnnotPtr annot, xmlSchemaElemen
     printf("        annot ptr = %p\n", (void *)annot);
 
     printf("\n");
-
+#endif
 }
 
 /* MASON */
@@ -8889,6 +8896,7 @@ declaration_part:
     }
 #ifndef DISABLE_NEW_STUFF
 
+#if 0
     /*
      * MASON:
      * Go through attributes at the end of xmlSchemaParseElement and do
@@ -8920,7 +8928,7 @@ declaration_part:
         }
         printf("\n");
     }
-
+#endif
 #endif /* DISABLE_NEW_STUFF */
     /*
     * NOTE: Element Declaration Representation OK 4. will be checked at a
@@ -25232,7 +25240,9 @@ xmlSchemaValidateElemDecl(xmlSchemaValidCtxtPtr vctxt)
             printf("        contorted elem = %p\n", (void *)elem);
 #endif
             if (elemDecl->mason_instance_callback != NULL) {
+#if 0
                 printf("===============> Found an instance callback!\n");
+#endif
                 elemDecl->mason_instance_callback(elemDecl, vctxt->inode->node);
             }
 #if 0

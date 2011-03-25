@@ -1,10 +1,62 @@
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 #include <libxml/xmlschemas.h>
 #include <libxml/schemasInternals.h>
 #include <libxml/tree.h>
+#include <libxml/xpath.h>
+#include <libxml/xpathInternals.h>
+
+/*
+  TODO:
+  - require -DREGISTER_ANNOTATIONS to enable this API
+*/
+
+  /**
+   * annotationParseEvent - app callback when XML Schema parser encounters an
+   * annotation attribute or appinfo element. The app may accept or discard the
+   * annotation. Discarding will disable subsequent callbacks for that element.
+   * 
+   * @loc: a location context which can be passed to the app again when
+   * validating such an element in an XML document.
+   * @ns: the namespace of the annotated attribute.
+   * @lname: the localname of the annotated attribute.
+   * @node: the DOM node of the annotation. For an annotation attribute,
+   *        this will be the DOM attribute node; for an appinfo element,
+   *        it will be that element in the appinfo.
+   *
+   * @returns: true: accepted, false: discard.
+  typedef bool (annotationParseEvent)(LOCATION loc, namespace ns,
+                                      localname lname, NODE node);
+   */
+
+  /**
+   * validateAnnotatedElement - app callback after XML Schema validator
+   * validates an annotated element.
+   * 
+   * @loc: a location context which was passed to the app during schema parsing
+   *       via the annotationParseEvent callback.
+   * @node: the DOM node of the element being validated.
+  typedef void (validateAnnotatedElement)(LOCATION loc, NODE node);
+   */
+
+  /**
+   * generateAnnotatedElement - app callback after XML Schema validator
+   * generates an annotated element.
+   * 
+   * @loc: a location context which was passed to the app during schema parsing
+   *       via the annotationParseEvent callback.
+   * @returns: the new DOM node for the generated element.
+  typedef Node (generateAnnotatedElement)(LOCATION loc);
+   */
+
+  /**
+  ErrCode register_annotationCallbacks(annotationParseEvent* p,
+                                       validateAnnotatedElement* v,
+                                       generatedAnnotatedElement* g);
+  */
 
 void walk_doc_tree(xmlNodePtr, int);
 void walk_schema_tree(xmlSchemaPtr);
@@ -49,24 +101,41 @@ const char *type_names[] =
 void
 walk_doc_tree(xmlNodePtr node, int level)
 {
-    int x;
-    int is_annotation;
-    xmlChar *c;
-
-    while (node != NULL)
-    {
-        for (x = 0;x < level;x++)
-            printf("  ");
-        c = xmlNodeGetContent(node);
-        printf("node %p type: %-20s node name: %-20s  content: \"%.40s\"\n",
-               (void *)node, type_names[node->type], node->name, c);
-        is_annotation = !strcmp((char *)node->name, "annotation");
-        if (is_annotation)
-            printf("  Got an annotation!\n");
-
-        walk_doc_tree(node->children, level + 1);
-        node = node->next;
+    const xmlChar* empty = (xmlChar*)"";
+    xmlChar* prefix = empty;
+    if (node->ns) {
+	prefix = xmlMalloc((strlen((const char*)node->ns->href) * sizeof(xmlChar)) + 3);
+	sprintf((char*)prefix, "{%s}", node->ns->href);
     }
+
+    if (node->type == XML_ELEMENT_NODE) {
+	xmlNodePtr att = node->properties;	/* warning: initialization from incompatible pointer type ?? */
+	xmlChar* closeMe = node->name;		/* warning: assignment discards qualifiers from pointer target type ?? */
+	printf("<%s%s", prefix, closeMe);
+	while (att != NULL) {
+	    walk_doc_tree(att, level + 1);
+	    att = att->next;
+	}
+	printf(">");
+
+	node = node->children;
+	while (node != NULL) {
+	    walk_doc_tree(node, level + 1);
+	    node = node->next;
+	}
+
+	if (closeMe != NULL)
+	    printf("</%s%s>", prefix, closeMe);
+    } else if (node->type == XML_ATTRIBUTE_NODE) {
+	printf(" %s%s=\"%s\"", prefix, node->name, xmlNodeGetContent(node));
+    } else if (node->type == XML_TEXT_NODE) {
+	printf("%s", xmlNodeGetContent(node));
+    } else
+	printf("node %p type: %-20s node name: %s%-20s\n",
+	       (void *)node, type_names[node->type], prefix, node->name);
+
+    if (prefix != empty)
+	xmlFree(prefix);
 }
 
 
@@ -154,14 +223,29 @@ extern int (*xmlSchemaAnnotationInstanceCallback)(void *, xmlNodePtr);
 int schema_annotation_callback(void *, xmlNodePtr);
 int instance_annotation_callback(void *, xmlNodePtr);
 
+xmlHashTablePtr Handle2Path = 0;
+
 /*
  * This is called by annotation_callback() in xmlschemas.c when an
  * annotation is encountered while reading the schema.
  */
-int schema_annotation_callback(void *opaque, xmlNodePtr node)
+int schema_annotation_callback(void *handle, xmlNodePtr node)
 {
     xmlChar* content = xmlNodeGetContent(node);
-    printf("\noooooooooooo %s: %p \"%s\"\n\n", __FUNCTION__, opaque, content);
+    char* key;
+    if (node->ns == NULL
+	|| strcmp("myNamespace", (const char*)node->ns->href)
+	|| strcmp("path", (const char*)node->name))
+	return 0;
+
+    printf("\noooooooooooo %s: %p \"%s\"\n", __FUNCTION__, handle, content);
+    walk_doc_tree(node, 0);
+    printf("\n");
+
+    key = xmlMalloc(20);
+    sprintf(key, "%p", handle);
+    xmlHashAddEntry(Handle2Path, (xmlChar*)key, content);
+
     return 1;
 }
 
@@ -169,22 +253,39 @@ int schema_annotation_callback(void *opaque, xmlNodePtr node)
  * This is called by ??? when reading an annotation is encountered
  * while reading the instance data.
  */
-int instance_annotation_callback(void *opaque, xmlNodePtr node)
+int instance_annotation_callback(void *handle, xmlNodePtr node)
 {
-    xmlChar* content = xmlNodeGetContent(node);
-    printf("\noooooooooooo %s: %p \"%s\"\n\n", __FUNCTION__, opaque, content);
+    int i;
+    char key[20];
+    xmlChar* path;
+    xmlDocPtr doc = node->doc;
+    xmlXPathContextPtr xpathCtx = xmlXPathNewContext(doc);
+    xmlXPathObjectPtr xpathObj;
+
+    sprintf(key, "%p", handle);
+    path = (xmlChar*)xmlHashLookup(Handle2Path, (xmlChar*)key);
+    assert(path != NULL);
+
+    printf("\noooooooooooo %s: %p %p\n", __FUNCTION__, handle, (void*)node);
+    walk_doc_tree(node, 0);
+    printf("\n");
+    xpathCtx->node = node;
+    xpathObj = xmlXPathEvalExpression(path, xpathCtx);
+    if (xpathObj->nodesetval != NULL)
+	for (i = 0; i < xpathObj->nodesetval->nodeNr; ++i)
+	    printf("xpath(\"%s\") => %s\n", path,
+		   xmlNodeGetContent(xpathObj->nodesetval->nodeTab[i]));
     return 1;
 }
 
 int
+test(const char*);
+
+int
 main(int argc, char *argv[])
 {
-    xmlDocPtr docPtr = NULL;
-    xmlNodePtr tree_trunk = NULL;
-    char filename[100];
-    xmlSchemaPtr wxschemas = NULL;
-
-    if (argc != 2)
+    int arg, ret;
+    if (argc < 2)
     {
         printf("Argument needed - the name, minus extension, of a schema and xml doc.\n");
         return -1;
@@ -192,6 +293,19 @@ main(int argc, char *argv[])
 
     xmlSchemaAnnotationSchemaCallback = schema_annotation_callback;
     xmlSchemaAnnotationInstanceCallback = instance_annotation_callback;
+    for (arg = 1; arg < argc; ++arg)
+	if ((ret = test(argv[arg])) != 0)
+	    return ret;
+    return 0;
+}
+
+int
+test (const char* base) {
+    xmlDocPtr docPtr = NULL;
+    char filename[100];
+    xmlSchemaPtr wxschemas = NULL;
+
+    Handle2Path = xmlHashCreate(0);
 
     /* Read the schema. */
     {
@@ -200,7 +314,7 @@ main(int argc, char *argv[])
 
         /* parserCtxt->ctxtType is xmlSchemaTypePtr */
 
-        snprintf(filename, 100, "%s.xsd", argv[1]);
+        snprintf(filename, 100, "%s.xsd", base);
         printf("\n\n\n----------------------------------------------------------------\n\n\n");
         printf("\n----> Reading schema %s...\n", filename);
 
@@ -215,20 +329,20 @@ main(int argc, char *argv[])
             printf("***** schema parsing failed!\n");
 	}
 	xmlSchemaFreeParserCtxt(parserCtxt);
-        printf("<---- Schema read!\n\n");
+        printf("\n<---- Schema read!\n\n");
     }
 
     /* Read the XML. */
     {
-        snprintf(filename, 100, "%s.xml", argv[1]);
-        printf("\n\n\n----------------------------------------------------------------\n\n\n");
+        snprintf(filename, 100, "%s.xml", base);
+        printf("----------------------------------------------------------------\n");
         printf("\n----> Reading XML %s...\n", filename);
         if ((docPtr = xmlReadFile(filename, NULL, 0)) == NULL)
         {
             printf("That didn't work out.\n");
             return -1;
         }
-        printf("<---- XML read!\n\n");
+        printf("<---- XML read!\n");
     }
 
     {
@@ -236,7 +350,7 @@ main(int argc, char *argv[])
 	xmlSchemaValidCtxtPtr schemaCtxt;
 	int ret;
 
-        printf("\n\n\n----------------------------------------------------------------\n\n\n");
+        printf("\n----------------------------------------------------------------\n");
         printf("\n----> Validating document %s...\n", filename);
 
         /* This sets up the schemaCtxt, including a pointer to wxschemas. */
@@ -260,7 +374,7 @@ main(int argc, char *argv[])
 		   filename);
 	}
 	xmlSchemaFreeValidCtxt(schemaCtxt);
-        printf("<---- Document validated!\n");
+        printf("\n<---- Document validated!\n");
 
     }
 
@@ -270,13 +384,14 @@ main(int argc, char *argv[])
     tree_trunk = xmlDocGetRootElement(docPtr);
 #endif
 
+#if 0
     tree_trunk = docPtr->children;
 
     printf("\n\n\n----------------------------------------------------------------\n\n\n");
     printf("\nWalking doc tree...\n");
     walk_doc_tree(tree_trunk, 0);
     printf("\n");
-
+#endif
     printf("\n\n\n----------------------------------------------------------------\n\n\n");
     printf("\nWalking schema tree...\n");
     walk_schema_tree(wxschemas);
@@ -297,6 +412,8 @@ main(int argc, char *argv[])
     xmlFreeDoc(docPtr);
 
     xmlCleanupParser();
+
+    xmlHashFree(Handle2Path, NULL);
 
     return 0;
 }
