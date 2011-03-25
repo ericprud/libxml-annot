@@ -760,7 +760,37 @@ struct _xmlSchemaType {
  */
 #define XML_SCHEMAS_ELEM_INTERNAL_CHECKED        1 << 18
 
-typedef int (*fptr)(void *, xmlNodePtr); /* XXX mason */
+/**
+ * validateAnnotatedElement - app callback after XML Schema validator
+ * validates an annotated element.
+ * 
+ * @handle: a location context which was passed to the app during schema parsing
+ *          via the xmlAnnotationParseEvent callback.
+ * @node: the DOM node of the element being validated.
+ *
+ * @returns: XML_ERR_OK if everything is OK, else some xmlParserErrors (see
+ *           include/libxml/xmlerror.h)
+ */
+typedef
+xmlParserErrors (xmlValidateAnnotatedElement)(void* handle, xmlNodePtr node);
+
+/**
+ * annotationParseEvent - app callback when XML Schema parser encounters an
+ * annotation attribute or appinfo element. The app may accept or discard the
+ * annotation. Discarding will disable subsequent callbacks for that element.
+ * 
+ * @handle: a context which will be passed to xmlValidateAnnotatedElement
+ *          when validating such an element in an XML document.
+ * @annotation: the DOM node of the annotation. For an annotation attribute,
+ *              this will be the DOM attribute node; for an appinfo element,
+ *              it will be that element in the appinfo.
+ *
+ * @returns: a function pointer of type validateAnnotatedElement, or NULL if
+ *           no callback is expected.
+ */
+typedef
+xmlValidateAnnotatedElement*
+(xmlAnnotationParseEvent)(void * handle, xmlNodePtr annotation);
 
 typedef struct _xmlSchemaElement xmlSchemaElement;
 typedef xmlSchemaElement *xmlSchemaElementPtr;
@@ -793,7 +823,7 @@ struct _xmlSchemaElement {
     const xmlChar *refPrefix; /* Deprecated; not used */
     xmlSchemaValPtr defVal; /* The compiled value contraint. */
     void *idcs; /* The identity-constraint defs */
-    fptr mason_instance_callback;
+    xmlValidateAnnotatedElement* validation_callback;
 };
 
 /*

@@ -6480,8 +6480,8 @@ xmlSchemaParseLocalAttributes(xmlSchemaParserCtxtPtr ctxt, xmlSchemaPtr schema,
 /****************************************************************/
 /* MASON */
 
-int (*xmlSchemaAnnotationSchemaCallback)(void *, xmlNodePtr) = NULL;
-int (*xmlSchemaAnnotationInstanceCallback)(void *, xmlNodePtr) = NULL;
+xmlAnnotationParseEvent* xmlSchemaAnnotationSchemaCallback = NULL;
+xmlValidateAnnotatedElement* xmlSchemaAnnotationInstanceCallback = NULL;
 
 static void xmlSchemaAnnotationCallback(xmlSchemaAnnotPtr, xmlSchemaElementPtr);
 
@@ -6523,7 +6523,7 @@ static void xmlSchemaAnnotationCallback(xmlSchemaAnnotPtr annot, xmlSchemaElemen
 		printf("   appinfo type     = %d\n", appinfo->type);
 #endif
 		if (xmlSchemaAnnotationSchemaCallback(decl, appinfo))
-		    decl->mason_instance_callback = xmlSchemaAnnotationInstanceCallback;
+		    decl->validation_callback = xmlSchemaAnnotationInstanceCallback;
 		appinfo = appinfo->next;
 	    }
             /* printf("   appinfo content = \"%s\"\n", xmlNodeGetContent(child)); */
@@ -8730,8 +8730,8 @@ declaration_part:
 
 		xmlSchemaPIllegalAttrErr(ctxt,
 		    XML_SCHEMAP_S4S_ATTR_NOT_ALLOWED, NULL, attr);
-	    } else if (xmlSchemaAnnotationSchemaCallback(decl, attr))
-		decl->mason_instance_callback = xmlSchemaAnnotationInstanceCallback;
+	    } else if (xmlSchemaAnnotationSchemaCallback(decl, (xmlNodePtr)attr)) /* @@ is that a legal upcast? EGP */
+		decl->validation_callback = xmlSchemaAnnotationInstanceCallback;
 	    attr = attr->next;
 	}
 	/*
@@ -25239,11 +25239,14 @@ xmlSchemaValidateElemDecl(xmlSchemaValidCtxtPtr vctxt)
             elem = elemDecl->annot->content->parent;
             printf("        contorted elem = %p\n", (void *)elem);
 #endif
-            if (elemDecl->mason_instance_callback != NULL) {
+            if (elemDecl->validation_callback != NULL) {
 #if 0
                 printf("===============> Found an instance callback!\n");
 #endif
-                elemDecl->mason_instance_callback(elemDecl, vctxt->inode->node);
+                xmlParserErrors ret =
+		    elemDecl->validation_callback(elemDecl, vctxt->inode->node);
+		if (ret != XML_ERR_OK)
+		    return ret;
             }
 #if 0
  else

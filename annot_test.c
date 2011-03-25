@@ -9,55 +9,6 @@
 #include <libxml/xpath.h>
 #include <libxml/xpathInternals.h>
 
-/*
-  TODO:
-  - require -DREGISTER_ANNOTATIONS to enable this API
-*/
-
-  /**
-   * annotationParseEvent - app callback when XML Schema parser encounters an
-   * annotation attribute or appinfo element. The app may accept or discard the
-   * annotation. Discarding will disable subsequent callbacks for that element.
-   * 
-   * @loc: a location context which can be passed to the app again when
-   * validating such an element in an XML document.
-   * @ns: the namespace of the annotated attribute.
-   * @lname: the localname of the annotated attribute.
-   * @node: the DOM node of the annotation. For an annotation attribute,
-   *        this will be the DOM attribute node; for an appinfo element,
-   *        it will be that element in the appinfo.
-   *
-   * @returns: true: accepted, false: discard.
-  typedef bool (annotationParseEvent)(LOCATION loc, namespace ns,
-                                      localname lname, NODE node);
-   */
-
-  /**
-   * validateAnnotatedElement - app callback after XML Schema validator
-   * validates an annotated element.
-   * 
-   * @loc: a location context which was passed to the app during schema parsing
-   *       via the annotationParseEvent callback.
-   * @node: the DOM node of the element being validated.
-  typedef void (validateAnnotatedElement)(LOCATION loc, NODE node);
-   */
-
-  /**
-   * generateAnnotatedElement - app callback after XML Schema validator
-   * generates an annotated element.
-   * 
-   * @loc: a location context which was passed to the app during schema parsing
-   *       via the annotationParseEvent callback.
-   * @returns: the new DOM node for the generated element.
-  typedef Node (generateAnnotatedElement)(LOCATION loc);
-   */
-
-  /**
-  ErrCode register_annotationCallbacks(annotationParseEvent* p,
-                                       validateAnnotatedElement* v,
-                                       generatedAnnotatedElement* g);
-  */
-
 void walk_doc_tree(xmlNodePtr, int);
 void walk_schema_tree(xmlSchemaPtr);
 
@@ -101,16 +52,17 @@ const char *type_names[] =
 void
 walk_doc_tree(xmlNodePtr node, int level)
 {
-    const xmlChar* empty = (xmlChar*)"";
+    xmlChar* empty = (xmlChar*)"";
     xmlChar* prefix = empty;
     if (node->ns) {
-	prefix = xmlMalloc((strlen((const char*)node->ns->href) * sizeof(xmlChar)) + 3);
-	sprintf((char*)prefix, "{%s}", node->ns->href);
+	size_t len = (xmlStrlen(node->ns->href) * sizeof(xmlChar)) + 3;
+	prefix = xmlMalloc(len);
+	snprintf((char*)prefix, len, "{%s}", node->ns->href);
     }
 
     if (node->type == XML_ELEMENT_NODE) {
 	xmlNodePtr att = node->properties;	/* warning: initialization from incompatible pointer type ?? */
-	xmlChar* closeMe = node->name;		/* warning: assignment discards qualifiers from pointer target type ?? */
+	const xmlChar* closeMe = node->name;
 	printf("<%s%s", prefix, closeMe);
 	while (att != NULL) {
 	    walk_doc_tree(att, level + 1);
@@ -195,33 +147,14 @@ walk_schema_tree(xmlSchemaPtr xmlschema)
 }
 
 /*
- * TODO 2-20:
- *
- * I should also get a callback for my:myLocalName, since it's a
- * foreign namespace.
- *
- * walk through each attribute, ignore prefix, any that aren't in a
- * known namespace get a callback too
- *
- * So far XMLSchema is the only known one.
- *
- * xmlAttr->ns has attribute namespace.
- * xmlNode->ns has node namespace.
- *
- * Go through attributes at the end of xmlSchemaParseElement and do
- * callbacks then.
- */
-
-
-/*
  * These are the two callbacks used by xmlschema.c.  These should be
  * set via an API.
  */
-extern int (*xmlSchemaAnnotationSchemaCallback)(void *, xmlNodePtr);
-extern int (*xmlSchemaAnnotationInstanceCallback)(void *, xmlNodePtr);
+extern xmlAnnotationParseEvent* xmlSchemaAnnotationSchemaCallback;
+extern xmlValidateAnnotatedElement* xmlSchemaAnnotationInstanceCallback;
 
-int schema_annotation_callback(void *, xmlNodePtr);
-int instance_annotation_callback(void *, xmlNodePtr);
+xmlValidateAnnotatedElement* schema_annotation_callback(void *, xmlNodePtr);
+xmlParserErrors instance_annotation_callback(void *, xmlNodePtr);
 
 xmlHashTablePtr Handle2Path = 0;
 
@@ -229,14 +162,14 @@ xmlHashTablePtr Handle2Path = 0;
  * This is called by annotation_callback() in xmlschemas.c when an
  * annotation is encountered while reading the schema.
  */
-int schema_annotation_callback(void *handle, xmlNodePtr node)
+xmlValidateAnnotatedElement* schema_annotation_callback(void *handle, xmlNodePtr node)
 {
     xmlChar* content = xmlNodeGetContent(node);
     char* key;
     if (node->ns == NULL
-	|| strcmp("myNamespace", (const char*)node->ns->href)
-	|| strcmp("path", (const char*)node->name))
-	return 0;
+	|| !xmlStrEqual(BAD_CAST "myNamespace", node->ns->href)
+	|| !xmlStrEqual(BAD_CAST "path", node->name))
+	return NULL;
 
     printf("\noooooooooooo %s: %p \"%s\"\n", __FUNCTION__, handle, content);
     walk_doc_tree(node, 0);
@@ -246,14 +179,14 @@ int schema_annotation_callback(void *handle, xmlNodePtr node)
     sprintf(key, "%p", handle);
     xmlHashAddEntry(Handle2Path, (xmlChar*)key, content);
 
-    return 1;
+    return &instance_annotation_callback;
 }
 
 /*
  * This is called by ??? when reading an annotation is encountered
  * while reading the instance data.
  */
-int instance_annotation_callback(void *handle, xmlNodePtr node)
+xmlParserErrors instance_annotation_callback(void *handle, xmlNodePtr node)
 {
     int i;
     char key[20];
@@ -266,7 +199,7 @@ int instance_annotation_callback(void *handle, xmlNodePtr node)
     path = (xmlChar*)xmlHashLookup(Handle2Path, (xmlChar*)key);
     assert(path != NULL);
 
-    printf("\noooooooooooo %s: %p %p\n", __FUNCTION__, handle, (void*)node);
+    printf("\noooooooooooo %s: %p\n", __FUNCTION__, handle);
     walk_doc_tree(node, 0);
     printf("\n");
     xpathCtx->node = node;
@@ -275,8 +208,29 @@ int instance_annotation_callback(void *handle, xmlNodePtr node)
 	for (i = 0; i < xpathObj->nodesetval->nodeNr; ++i)
 	    printf("xpath(\"%s\") => %s\n", path,
 		   xmlNodeGetContent(xpathObj->nodesetval->nodeTab[i]));
-    return 1;
+    return XML_ERR_OK;
 }
+
+/*
+  TODO:
+  - require -DREGISTER_ANNOTATIONS to enable this API
+*/
+
+  /**
+   * generateAnnotatedElement - app callback after XML Schema validator
+   * generates an annotated element.
+   * 
+   * @loc: a location context which was passed to the app during schema parsing
+   *       via the annotationParseEvent callback.
+   * @returns: the new DOM node for the generated element.
+  typedef Node (generateAnnotatedElement)(LOCATION loc);
+   */
+
+  /**
+  ErrCode register_annotationCallbacks(annotationParseEvent* p,
+                                       validateAnnotatedElement* v,
+                                       generatedAnnotatedElement* g);
+  */
 
 int
 test(const char*);
