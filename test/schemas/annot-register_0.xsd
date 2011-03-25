@@ -3,9 +3,12 @@
  -->
 <!-- register annot handler Foo -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-elementFormDefault="qualified" attributeFormDefault="unqualified">
-<xs:element name="person" xmlns:my="myNamespace" xmlns:their="theirNamespace" my:path="age"><!-- ParseEvt("myNamespace", "myLocalName", 0xcafefeeb, "print age") { TheHandlers[0xcafefeeb] = "print age"; } -->
-<xs:complexType>
+	   xmlns:my="myNamespace"
+	   xmlns:their="theirNamespace"
+	   elementFormDefault="qualified"
+	   attributeFormDefault="unqualified">
+<xs:element name="person" my:path="age" type="T_person"/><!-- ParseEvt("myNamespace", "myLocalName", 0xcafefeeb, "print age") { TheHandlers[0xcafefeeb] = "print age"; } -->
+<xs:complexType name="T_person">
   <xs:sequence maxOccurs="3">
       <xs:element name="fname" minOccurs="0" type="xs:string">
           <xs:annotation><xs:appinfo><my:path>.</my:path></xs:appinfo>
@@ -20,5 +23,4 @@ elementFormDefault="qualified" attributeFormDefault="unqualified">
       </xs:element>
   </xs:sequence>
 </xs:complexType>
-</xs:element>
 </xs:schema>
