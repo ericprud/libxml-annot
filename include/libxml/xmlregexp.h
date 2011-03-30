@@ -68,8 +68,11 @@ XMLPUBFUN int XMLCALL
  * @inputdata: input data
  *
  * Callback function when doing a transition in the automata
+ *
+ * When used to explore a regex, returns 1 to follow a transition.
+ * Otherwise, result is ignored.
  */
-typedef void (*xmlRegExecCallbacks) (xmlRegExecCtxtPtr exec,
+typedef int (*xmlRegExecCallbacks) (xmlRegExecCtxtPtr exec,
 	                             const xmlChar *token,
 				     void *transdata,
 				     void *inputdata);
@@ -212,6 +215,13 @@ XMLPUBFUN int XMLCALL
 XMLPUBFUN void XMLCALL
 			xmlExpDump	(xmlBufferPtr buf,
 					 xmlExpNodePtr expr);
+
+/*
+ * The exploration API
+ */
+extern const xmlChar *V_explore;
+
+
 #endif /* LIBXML_EXPR_ENABLED */
 #ifdef __cplusplus
 }

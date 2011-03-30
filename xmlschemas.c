@@ -586,9 +586,14 @@ struct _xmlSchemaConstructionCtxt {
 
 struct _xmlSchemaParserCtxt {
     int type;
+
     void *errCtxt;             /* user specific error context */
     xmlSchemaValidityErrorFunc error;   /* the callback in case of errors */
     xmlSchemaValidityWarningFunc warning;       /* the callback in case of warning */
+
+    void *annotCtxt;             /* user specific annotation parser context */
+    xmlAnnotationParseEvent* annotCallback;   /* callback when parsing annotations */
+
     int err;
     int nberrors;
     xmlStructuredErrorFunc serror;
@@ -963,10 +968,17 @@ struct _xmlSchemaAttrInfo {
  */
 struct _xmlSchemaValidCtxt {
     int type;
+
     void *errCtxt;             /* user specific data block */
     xmlSchemaValidityErrorFunc error;   /* the callback in case of errors */
     xmlSchemaValidityWarningFunc warning; /* the callback in case of warning */
     xmlStructuredErrorFunc serror;
+
+    void *validCtxt;             /* user specific validation context */
+    xmlNotifyValidatedElement* validCallback;   /* callback after validating element */
+
+    void *genCtxt;             /* user specific generation context */
+    xmlGenerateElement* genCallback;   /* callback to generate XML nodes */
 
     xmlSchemaPtr schema;        /* The schema in use */
     xmlDocPtr doc;
@@ -6476,102 +6488,6 @@ xmlSchemaParseLocalAttributes(xmlSchemaParserCtxtPtr ctxt, xmlSchemaPtr schema,
     return (0);
 }
 
-#ifndef DISABLE_NEW_STUFF
-/****************************************************************/
-/* MASON */
-
-xmlAnnotationParseEvent* xmlSchemaAnnotationSchemaCallback = NULL;
-xmlValidateAnnotatedElement* xmlSchemaAnnotationInstanceCallback = NULL;
-
-static void xmlSchemaAnnotationCallback(xmlSchemaAnnotPtr, xmlSchemaElementPtr);
-
-/*
- * MASON:
- *
- * This gets an xmlSchemaAnnotPtr as an argument.  It calls the
- * callback with the parent of the AnnotPtr.
- */
-static void xmlSchemaAnnotationCallback(xmlSchemaAnnotPtr annot, xmlSchemaElementPtr decl)
-{
-    xmlNodePtr node;
-    xmlNodePtr child = NULL;
-
-    if (xmlSchemaAnnotationSchemaCallback == NULL)
-        return;
-
-#if 0
-    printf("\n==== %s\n", __FUNCTION__);
-    printf("This is what I know about this annotation:\n");
-    printf("   ptr           = %p\n", (void*)annot);
-    printf("   next          = %p\n", (void *)annot->next);
-    printf("   content       = %p\n", (void *)annot->content);
-#endif
-
-    node = annot->content;
-
-    child = node->children;
-    while (child != NULL) {
-	if (IS_SCHEMA(child, "appinfo")) {
-	    xmlNodePtr appinfo = child->children;
-	    while (appinfo != NULL) {
-#if 0
-		printf("   appinfo ptr      = %p\n", (void *)appinfo);
-		if (appinfo->ns != NULL)
-		    printf("   appinfo ns     = \"%s\" (%s)\n", appinfo->ns->href, appinfo->ns->prefix);
-		printf("   appinfo name     = \"%s\"\n", appinfo->name);
-		printf("   appinfo doc      = %p\n", (void *)appinfo->doc);
-		printf("   appinfo type     = %d\n", appinfo->type);
-#endif
-		if (xmlSchemaAnnotationSchemaCallback(decl, appinfo))
-		    decl->validation_callback = xmlSchemaAnnotationInstanceCallback;
-		appinfo = appinfo->next;
-	    }
-            /* printf("   appinfo content = \"%s\"\n", xmlNodeGetContent(child)); */
-        } else if (IS_SCHEMA(child, "documentation")) {
-#if 0
-            printf("   appinfo documentation = \"%s\"\n", xmlNodeGetContent(child));
-#endif
-        } else
-            printf("   appinfo \"%s\"\n", child->name);
-        child = child->next;
-    }
-
-#if 0
-    printf("   PARENT:\n");
-
-    node = annot->content->parent;
-    printf("   node ptr      = %p\n", (void *)node);
-    printf("   node name     = \"%s\"\n", node->name);
-    printf("   node doc      = %p\n", (void *)node->doc);
-    printf("   node type     = %d\n", node->type);
-
-    /* node->children appears to always be NULL here. */
-    child = node->children;
-    while (child != NULL) {
-	if (IS_SCHEMA(child, "appinfo")) {
-            printf("   appinfo content = \"%s\"\n", xmlNodeGetContent(child));
-        } else if (IS_SCHEMA(child, "documentation")) {
-            printf("   appinfo documentation = \"%s\"\n", xmlNodeGetContent(child));
-        } else if (IS_SCHEMA(child, "annotation")) {
-            printf("   appinfo annotation (see above)\n");
-        } else
-            printf("   appinfo \"%s\"\n", child->name);
-        
-        child = child->next;
-    }
-
-    printf("======> Setting instance callback in struct at %p\n", (void *)decl);
-    printf("        decl annot ptr = %p\n", (void *)decl->annot);
-    printf("        annot ptr = %p\n", (void *)annot);
-
-    printf("\n");
-#endif
-}
-
-/* MASON */
-/****************************************************************/
-
-#endif /* DISABLE_NEW_STUFF */
 /**
  * xmlSchemaParseAnnotation:
  * @ctxt:  a schema validation context
@@ -8730,8 +8646,8 @@ declaration_part:
 
 		xmlSchemaPIllegalAttrErr(ctxt,
 		    XML_SCHEMAP_S4S_ATTR_NOT_ALLOWED, NULL, attr);
-	    } else if (xmlSchemaAnnotationSchemaCallback(decl, (xmlNodePtr)attr)) /* @@ is that a legal upcast? EGP */
-		decl->validation_callback = xmlSchemaAnnotationInstanceCallback;
+	    } else if (ctxt->annotCallback != NULL)
+		decl->validation_callback = ctxt->annotCallback(decl, (xmlNodePtr)attr); /* @@ is that a legal upcast? EGP */
 	    attr = attr->next;
 	}
 	/*
@@ -8890,46 +8806,22 @@ declaration_part:
 	}
 	decl->annot = annot;
 #ifndef DISABLE_NEW_STUFF
-	if (annot != NULL)
-	    xmlSchemaAnnotationCallback(annot, decl);
+	if (annot != NULL && ctxt->annotCallback != NULL)
+
+	    for (child = annot->content->children;
+		 child != NULL; child = child->next) {
+		if (IS_SCHEMA(child, "appinfo")) {
+		    xmlNodePtr appinfo;
+		    for (appinfo = child->children;
+			 appinfo != NULL; appinfo = appinfo->next)
+			decl->validation_callback = ctxt->annotCallback(decl, appinfo);
+
+		}
+	    }
+
 #endif /* DISABLE_NEW_STUFF */
     }
-#ifndef DISABLE_NEW_STUFF
 
-#if 0
-    /*
-     * MASON:
-     * Go through attributes at the end of xmlSchemaParseElement and do
-     * callbacks then.
-     */
-    {
-        xmlAttrPtr prop;
-        const xmlChar *content;
-
-        printf("\n==== Walking property list for node \"%s\":\n", node->name);
-	prop = node->properties;
-	while (prop != NULL) {
-            printf("     Got property:  \"%s\"\n", prop->name);
-            if (prop->ns) {
-                /*
-                 * XXX FIXME:
-                 * Instead of ns->prefix I need to pass in the namespace for the prefix.
-                 * In this case it will be "myNameSpace".
-                 */
-                /* Note that ns->prefix can be null. */
-                printf("      Got NS \"%s\":\"%s\"\n", prop->ns->prefix, prop->ns->href);
-                if (prop->ns->next != NULL)
-                    printf("      NS has next pointer!\n");
-            }
-            content = xmlSchemaGetNodeContent(ctxt, (xmlNodePtr) prop);
-            printf("      node content = \"%s\"\n", content);
-
-            prop = prop->next;
-        }
-        printf("\n");
-    }
-#endif
-#endif /* DISABLE_NEW_STUFF */
     /*
     * NOTE: Element Declaration Representation OK 4. will be checked at a
     * different layer.
@@ -26083,7 +25975,7 @@ xmlSchemaCheckCOSValidDefault(xmlSchemaValidCtxtPtr vctxt,
     return (ret);
 }
 
-static void
+static int
 xmlSchemaVContentModelCallback(xmlSchemaValidCtxtPtr vctxt ATTRIBUTE_UNUSED,
 			       const xmlChar * name ATTRIBUTE_UNUSED,
 			       xmlSchemaElementPtr item,
@@ -26109,6 +26001,7 @@ xmlSchemaVContentModelCallback(xmlSchemaValidCtxtPtr vctxt ATTRIBUTE_UNUSED,
 	FREE_AND_NULL(str)
     }
 #endif
+    return 1;
 }
 
 static int
@@ -26710,7 +26603,7 @@ xmlSchemaValidateChildElem(xmlSchemaValidCtxtPtr vctxt)
 		return (-1);
 	    }
 	    /*
-	    * Safety belf for evaluation if the cont. model was already
+	    * Safety belt for evaluation if the cont. model was already
 	    * examined to be invalid.
 	    */
 	    if (pielem->flags & XML_SCHEMA_ELEM_INFO_ERR_BAD_CONTENT) {
@@ -27951,6 +27844,61 @@ xmlSchemaValidCtxtGetOptions(xmlSchemaValidCtxtPtr ctxt)
 	return (ctxt->options);
 }
 
+/**
+ * xmlSchemaSetParserAnnotation:
+ * @ctxt:  a schema validation context
+ * @err:  the error callback
+ * @warn:  the warning callback
+ * @ctx:  contextual data for the callbacks
+ *
+ * Set the callback functions used to handle errors for a validation context
+ */
+void
+xmlSchemaSetParserAnnotation(xmlSchemaParserCtxtPtr ctxt,
+			     xmlAnnotationParseEvent* annot, void *ctx)
+{
+    if (ctxt == NULL)
+        return;
+    ctxt->annotCallback = annot;
+    ctxt->annotCtxt = ctx;
+}
+
+/**
+ * xmlSchemaSetGeneratorCallback:
+ * @ctxt:  a schema validation context
+ * @err:  the XML node generator function
+ * @ctx: the function's context
+ *
+ * Set the error and warning callback informations
+ */
+void
+xmlSchemaSetValidNotification(xmlSchemaValidCtxtPtr ctxt,
+			      xmlNotifyValidatedElement gen, void *ctx)
+{
+    if (ctxt == NULL)
+        return;
+    ctxt->validCallback = gen;
+    ctxt->validCtxt = ctx;
+}
+
+/**
+ * xmlSchemaSetGeneratorCallback:
+ * @ctxt:  a schema validation context
+ * @err:  the XML node generator function
+ * @ctx: the function's context
+ *
+ * Set the error and warning callback informations
+ */
+void
+xmlSchemaSetGeneratorCallback(xmlSchemaValidCtxtPtr ctxt,
+			      xmlGenerateElement gen, void *ctx)
+{
+    if (ctxt == NULL)
+        return;
+    ctxt->genCallback = gen;
+    ctxt->genCtxt = ctx;
+}
+
 static int
 xmlSchemaVDocWalk(xmlSchemaValidCtxtPtr vctxt)
 {
@@ -28936,6 +28884,103 @@ xmlSchemaValidCtxtGetParserCtxt(xmlSchemaValidCtxtPtr ctxt)
         return(NULL);
     return (ctxt->parserCtxt);
 }
+
+
+static int
+xmlSchemaEContentModelCallback(xmlSchemaValidCtxtPtr vctxt ATTRIBUTE_UNUSED,
+			       const xmlChar * name ATTRIBUTE_UNUSED,
+			       xmlSchemaElementPtr item,
+			       xmlSchemaNodeInfoPtr inode)
+{
+    inode->decl = item;
+#ifdef DEBUG_CONTENT
+    {
+	xmlChar *str = NULL;
+
+	if (item->type == XML_SCHEMA_TYPE_ELEMENT) {
+	    xmlGenericError(xmlGenericErrorContext,
+		"AUTOMATON callback for '%s' [declaration]\n",
+		xmlSchemaFormatQName(&str,
+		inode->localName, inode->nsName));
+	} else {
+	    xmlGenericError(xmlGenericErrorContext,
+		    "AUTOMATON callback for '%s' [wildcard]\n",
+		    xmlSchemaFormatQName(&str,
+		    inode->localName, inode->nsName));
+
+	}
+	FREE_AND_NULL(str)
+    }
+#endif
+    return 1;
+}
+
+#define NI 		fprintf(stderr, "__FUNCTION__/%d not implemented at __FILE__:__LINE__", ptype->contentType); \
+		exit(1)
+
+
+xmlNodePtr
+generate(xmlSchemaPtr schema,
+		    const xmlChar * name, xmlNsPtr ns) {
+    xmlNodePtr ret;
+    xmlSchemaElementPtr root =
+	xmlSchemaGetElem(schema, name, ns ? ns->href : NULL);
+    if (root == NULL) {
+	/* VERROR(ret, NULL,   ) */
+	printf(
+	       "No matching global declaration available "
+	       "for the generation root");
+    }
+    {
+	xmlBufferPtr xmlExpBuf = xmlBufferCreate();
+	xmlRegexpPrint(stdout, root->subtypes->contModel);
+/* 	xmlExpDump(xmlExpBuf, root->subtypes->contModel); */
+	printf("root: %s\n",
+	       (const char *) xmlBufferContent(xmlExpBuf));
+    }
+    ret = xmlNewNode(ns, name);
+    ret->line = root->node->line;
+    return ret;
+
+#if 0
+
+    ptype = pielem->typeDef;
+    switch (ptype->contentType) {
+
+<people xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="annot-register_0.xsd" foo="bar">
+  <person>
+    <fname>Bob</fname>
+    <age>44</age>
+  </person>
+  <person>
+    <fname>Joe</fname>
+    <age>88</age>
+  </person>
+</people>
+
+xmlAttrPtr
+xmlNewProp(xmlNodePtr node, const xmlChar *name, const xmlChar *value)
+xmlAttrPtr
+xmlNewNsProp(xmlNodePtr node, xmlNsPtr ns, const xmlChar *name, const xmlChar *value)
+xmlNodePtr
+xmlNewNode(xmlNsPtr ns, const xmlChar *name)
+use DocFragment ?
+xmlNodePtr
+xmlNewText(const xmlChar *content)
+xmlNodePtr
+xmlNewTextChild(xmlNodePtr parent, xmlNsPtr ns, const xmlChar *name, const xmlChar *content)
+xmlNodePtr
+xmlNewDocText(xmlDocPtr doc, const xmlChar *content)
+void
+xmlSetTreeDoc(xmlNodePtr tree, xmlDocPtr doc)
+xmlNodePtr
+xmlNewChild(xmlNodePtr parent, xmlNsPtr ns, const xmlChar *name, const xmlChar *content)
+xmlAttrPtr
+ret->line = 
+#endif
+}
+
 
 #define bottom_xmlschemas
 #include "elfgcchack.h"

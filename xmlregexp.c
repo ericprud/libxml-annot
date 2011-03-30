@@ -3745,6 +3745,15 @@ error:
     return(-1);
 }
 
+const xmlChar *V_explore = BAD_CAST "!!V_explore!!";
+
+static
+int xmlMatchOrExplore(const xmlChar *value,
+		      const xmlChar *token,
+		      xmlRegExecCtxtPtr exec,
+		      void *transdata,
+		      void *inputdata);
+
 /**
  * xmlRegExecPushStringInternal:
  * @exec: a regexp execution context or NULL to indicate the end
@@ -3843,14 +3852,16 @@ xmlRegExecPushStringInternal(xmlRegExecCtxtPtr exec, const xmlChar *value,
 			count = exec->counts[t->counter];
 			if ((count < counter->max) && 
 		            (t->atom != NULL) &&
-			    (xmlStrEqual(value, t->atom->valuep))) {
+			    (xmlMatchOrExplore(value, t->atom->valuep,
+					       exec->data, atom->data, data))) {
 			    ret = 0;
 			    break;
 			}
 			if ((count >= counter->min) &&
 			    (count < counter->max) &&
 			    (t->atom != NULL) &&
-			    (xmlStrEqual(value, t->atom->valuep))) {
+			    (xmlMatchOrExplore(value, t->atom->valuep,
+					       exec->data, atom->data, data))) {
 			    ret = 1;
 			    break;
 			}
@@ -3967,7 +3978,8 @@ xmlRegExecPushStringInternal(xmlRegExecCtxtPtr exec, const xmlChar *value,
 			    exec->transno = transno;
 			    exec->state = state;
 			}
-			ret = xmlStrEqual(value, atom->valuep);
+			ret = xmlMatchOrExplore(value, atom->valuep,
+						exec->data, atom->data, data);
 			exec->transcount++;
 		    } while (ret == 1);
 		    if (exec->transcount < atom->min)
@@ -3986,7 +3998,7 @@ xmlRegExecPushStringInternal(xmlRegExecCtxtPtr exec, const xmlChar *value,
 	    }
 	    if (ret == 1) {
 		if ((exec->callback != NULL) && (atom != NULL) &&
-			(data != NULL)) {
+		    (data != NULL) && (value != V_explore)) {
 		    exec->callback(exec->data, atom->valuep,
 			           atom->data, data);
 		}
@@ -4104,6 +4116,19 @@ progress:
 #endif
     return(exec->status);
 }
+
+static
+int xmlMatchOrExplore(const xmlChar *value,
+		      const xmlChar *token,
+		      xmlRegExecCtxtPtr exec,
+		      void *transdata,
+		      void *inputdata) {
+    return
+	(value == V_explore)
+	? exec->callback(exec, token, transdata, inputdata)
+	: xmlStrEqual(value, token);
+}
+
 
 /**
  * xmlRegExecPushString:

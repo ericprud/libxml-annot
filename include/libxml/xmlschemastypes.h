@@ -16,8 +16,8 @@
 
 #ifdef LIBXML_SCHEMAS_ENABLED
 
-#include <libxml/schemasInternals.h>
 #include <libxml/xmlschemas.h>
+#include <libxml/schemasInternals.h>
 
 #ifdef __cplusplus
 extern "C" {

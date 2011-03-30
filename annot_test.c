@@ -65,7 +65,7 @@ walk_doc_tree(xmlNodePtr node, int level)
     }
 
     if (node->type == XML_ELEMENT_NODE) {
-	xmlNodePtr att = node->properties;	/* warning: initialization from incompatible pointer type ?? */
+	xmlNodePtr att = (xmlNodePtr) node->properties;	/* similar casts in e.g. xmlschemas.c */
 	const xmlChar* closeMe = node->name;
 	printf("<%s%s", prefix, closeMe);
 	while (att != NULL) {
@@ -83,7 +83,7 @@ walk_doc_tree(xmlNodePtr node, int level)
 	if (closeMe != NULL)
 	    printf("</%s%s>", prefix, closeMe);
     } else if (node->type == XML_ATTRIBUTE_NODE) {
-	printf(" %s%s=\"%s\"", prefix, node->name, xmlNodeGetContent(node));
+	printf(" %s%s=\"%s\"", prefix, node->name, xmlNodeGetContent(node)); /* xmlNodeListGetString ? */
     } else if (node->type == XML_TEXT_NODE) {
 	printf("%s", xmlNodeGetContent(node));
     } else
@@ -150,14 +150,8 @@ walk_schema_tree(xmlSchemaPtr xmlschema)
         walk_doc_tree(doc->children, 0);
 }
 
-/*
- * These are the two callbacks used by xmlschema.c.  These should be
- * set via an API.
- */
-extern xmlAnnotationParseEvent* xmlSchemaAnnotationSchemaCallback;
-extern xmlValidateAnnotatedElement* xmlSchemaAnnotationInstanceCallback;
 
-xmlValidateAnnotatedElement* schema_annotation_callback(void *, xmlNodePtr);
+xmlNotifyValidatedElement* schema_annotation_callback(void *, xmlNodePtr);
 xmlParserErrors instance_annotation_callback(void *, xmlNodePtr);
 
 xmlHashTablePtr Handle2Path = 0;
@@ -166,7 +160,7 @@ xmlHashTablePtr Handle2Path = 0;
  * This is called by annotation_callback() in xmlschemas.c when an
  * annotation is encountered while reading the schema.
  */
-xmlValidateAnnotatedElement* schema_annotation_callback(void *handle, xmlNodePtr node)
+xmlNotifyValidatedElement* schema_annotation_callback(void *handle, xmlNodePtr node)
 {
     xmlChar* content = xmlNodeGetContent(node);
     char* key;
@@ -220,21 +214,23 @@ xmlParserErrors instance_annotation_callback(void *handle, xmlNodePtr node)
   - require -DREGISTER_ANNOTATIONS to enable this API
 */
 
-  /**
-   * generateAnnotatedElement - app callback after XML Schema validator
-   * generates an annotated element.
-   * 
-   * @loc: a location context which was passed to the app during schema parsing
-   *       via the annotationParseEvent callback.
-   * @returns: the new DOM node for the generated element.
-  typedef Node (generateAnnotatedElement)(LOCATION loc);
-   */
+typedef struct {
+    int size;
+    xmlChar** fnames;
+    int fname;
+    xmlChar** ages;
+    int age;
+} genContext;
 
-  /**
-  ErrCode register_annotationCallbacks(annotationParseEvent* p,
-                                       validateAnnotatedElement* v,
-                                       generatedAnnotatedElement* g);
-  */
+xmlChar* Fnames[] = {BAD_CAST "Bob", BAD_CAST "Joe"};
+xmlChar* Ages[] = {BAD_CAST "44", BAD_CAST "88"};
+
+genContext GenContext = {2, Fnames, 0, Ages, 0};
+
+xmlGenerateElement generation_callback;
+xmlNodePtr generation_callback(void * handle, xmlNodePtr parent, void* ctxt) {
+    return NULL;
+}
 
 int
 test(const char*);
@@ -249,8 +245,6 @@ main(int argc, char *argv[])
         return -1;
     }        
 
-    xmlSchemaAnnotationSchemaCallback = schema_annotation_callback;
-    xmlSchemaAnnotationInstanceCallback = instance_annotation_callback;
     for (arg = 1; arg < argc; ++arg)
 	if ((ret = test(argv[arg])) != 0)
 	    return ret;
@@ -281,6 +275,7 @@ test (const char* base) {
 		(xmlSchemaValidityErrorFunc) fprintf,
 		(xmlSchemaValidityWarningFunc) fprintf,
 		stdout);
+	xmlSchemaSetParserAnnotation(parserCtxt, schema_annotation_callback, NULL);
 	wxschemas = xmlSchemaParse(parserCtxt);
 	if (wxschemas == NULL)
         {
@@ -333,6 +328,67 @@ test (const char* base) {
 
     }
 
+    /* Generate a doc and validate it. */
+    {
+	xmlDocPtr newDoc = xmlNewDoc(BAD_CAST "1.0");
+	{
+	    xmlSchemaValidCtxtPtr schemaCtxt;
+	    int ret;
+
+	    schemaCtxt = xmlSchemaNewValidCtxt(wxschemas);
+	    xmlSchemaSetValidErrors(schemaCtxt,
+				    (xmlSchemaValidityErrorFunc) fprintf,
+				    (xmlSchemaValidityWarningFunc) fprintf,
+				    stdout);
+	    xmlSchemaSetGeneratorCallback(schemaCtxt, &generation_callback, NULL);
+	    ret = xmlSchemaValidateDoc(schemaCtxt, newDoc);
+	    if (ret == 0)
+		;
+	    else if (ret > 0)
+		printf("%s fails to validate\n", filename);
+	    else
+		printf("%s validation generated an internal error\n",
+		       filename);
+	    xmlSchemaFreeValidCtxt(schemaCtxt);
+	    printf("\n<---- Schema read!\n\n");
+	}
+
+	if (0) {
+	    xmlNodePtr root = generate(wxschemas, BAD_CAST "people", NULL, generation_callback);
+	    xmlDocSetRootElement(newDoc, root);
+	    {
+		xmlChar *xmlbuff;
+		int buffersize;
+		xmlDocDumpFormatMemory(newDoc, &xmlbuff, &buffersize, 1);
+		printf("%s", (char *) xmlbuff);
+		xmlFree(xmlbuff);
+	    }
+	    walk_doc_tree(root, 0);
+	}
+
+	{
+	    xmlSchemaValidCtxtPtr schemaCtxt;
+	    int ret;
+
+	    schemaCtxt = xmlSchemaNewValidCtxt(wxschemas);
+	    xmlSchemaSetValidErrors(schemaCtxt,
+				    (xmlSchemaValidityErrorFunc) fprintf,
+				    (xmlSchemaValidityWarningFunc) fprintf,
+				    stdout);
+	    ret = xmlSchemaValidateDoc(schemaCtxt, newDoc);
+	    if (ret == 0)
+		;
+	    else if (ret > 0)
+		printf("%s fails to validate\n", filename);
+	    else
+		printf("%s validation generated an internal error\n",
+		       filename);
+	    xmlSchemaFreeValidCtxt(schemaCtxt);
+	    printf("\n<---- Schema read!\n\n");
+	}
+
+	xmlFreeDoc(newDoc);
+    }
 
 #if 0
     /* why can't I just start with doc->children? */

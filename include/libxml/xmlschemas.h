@@ -105,6 +105,51 @@ typedef void (XMLCDECL *xmlSchemaValidityErrorFunc) (void *ctx, const char *msg,
 typedef void (XMLCDECL *xmlSchemaValidityWarningFunc) (void *ctx, const char *msg, ...) LIBXML_ATTR_FORMAT(2,3);
 
 /**
+ * xmlNotifyValidatedElement - app callback after XML Schema validator
+ * validates a given element.
+ * 
+ * @handle: a location context which was passed to the app during schema parsing
+ *          via the xmlAnnotationParseEvent callback.
+ * @node: the DOM node of the element being validated.
+ *
+ * @returns: XML_ERR_OK if everything is OK, else some xmlParserErrors (see
+ *           include/libxml/xmlerror.h)
+ */
+typedef xmlParserErrors
+(XMLCDECL xmlNotifyValidatedElement)(void* handle, xmlNodePtr node);
+
+/**
+ * annotationParseEvent - app callback when XML Schema parser encounters an
+ * annotation attribute or appinfo element. The app may accept or discard the
+ * annotation. Discarding will disable subsequent callbacks for that element.
+ * 
+ * @handle: a context which will be passed to xmlNotifyValidatedElement
+ *          when validating such an element in an XML document.
+ * @annotation: the DOM node of the annotation. For an annotation attribute,
+ *              this will be the DOM attribute node; for an appinfo element,
+ *              it will be that element in the appinfo.
+ *
+ * @returns: a function pointer of type validateAnnotatedElement, or NULL if
+ *           no callback is expected.
+ */
+typedef xmlNotifyValidatedElement*
+(XMLCDECL xmlAnnotationParseEvent)(void * handle, xmlNodePtr annotation);
+
+/**
+ * generateAnnotatedElement - app callback after XML Schema validator
+ * generates an annotated element.
+ * 
+ * @handle: a context which will be passed to xmlNotifyValidatedElement
+ *          when validating such an element in an XML document.
+ * @parent: the parent element if this prospective element. (The callback
+ *          need not add the returned element to the parent's children.)
+ * @ctx: the generation context
+ * @returns: the new DOM node for the generated element.
+*/
+typedef xmlNodePtr
+(XMLCDECL xmlGenerateElement)(void* handle, xmlNodePtr parent, void* ctx);
+
+/**
  * A schemas validation context
  */
 typedef struct _xmlSchemaParserCtxt xmlSchemaParserCtxt;
@@ -210,6 +255,26 @@ XMLPUBFUN xmlSchemaSAXPlugPtr XMLCALL
 					 void **user_data);
 XMLPUBFUN int XMLCALL
             xmlSchemaSAXUnplug		(xmlSchemaSAXPlugPtr plug);
+
+/*
+ * Interface for tree manipulation
+ */
+XMLPUBFUN void XMLCALL
+            xmlSchemaSetParserAnnotation(xmlSchemaParserCtxtPtr ctxt,
+					 xmlAnnotationParseEvent* annot,
+					 void *ctx);
+
+XMLPUBFUN void XMLCALL
+            xmlSchemaSetValidNotification
+                                        (xmlSchemaValidCtxtPtr ctxt,
+					 xmlNotifyValidatedElement gen,
+					 void *ctx);
+XMLPUBFUN void XMLCALL
+            xmlSchemaSetGeneratorCallback
+                                        (xmlSchemaValidCtxtPtr ctxt,
+					 xmlGenerateElement gen,
+					 void *ctx);
+
 #ifdef __cplusplus
 }
 #endif
