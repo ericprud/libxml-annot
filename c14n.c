@@ -2040,7 +2040,7 @@ xmlC14NDocDumpMemory(xmlDocPtr doc, xmlNodeSetPtr nodes,
     (void) xmlOutputBufferClose(buf);
 
     if ((*doc_txt_ptr == NULL) && (ret > 0)) {
-        xmlC14NErrMemory("coping canonicanized document");
+        xmlC14NErrMemory("copying canonicanized document");
         return (-1);
     }
     return (ret);
