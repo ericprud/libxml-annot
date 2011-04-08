@@ -1,5 +1,6 @@
 /*
  * ./annot_test test/schemas/annot-register-{nested,typed}{-seq,}_0
+ * make -k annot_test && ./annot_test test/schemas/annot-register-{nested,typed}_0
  */
 
 #include <stdio.h>
@@ -92,8 +93,28 @@ walk_doc_tree(xmlNodePtr node, int level)
 
     if (prefix != empty)
 	xmlFree(prefix);
+    if (level == 0)
+	printf("\n");
 }
 
+void dump_doc(xmlDocPtr doc, xmlNodePtr hilight);
+void dump_doc(xmlDocPtr doc, xmlNodePtr hilight)
+{
+    xmlChar *xmlbuff;
+    int buffersize;
+    xmlChar space[255] = "";
+    const xmlChar* was = NULL;
+    if (hilight != NULL) {
+	sprintf((char*)space, "***%s***", hilight->name);
+	was = hilight->name;
+	hilight->name = space;
+    }
+    xmlDocDumpFormatMemory(doc, &xmlbuff, &buffersize, 1);
+    if (hilight != NULL)
+	hilight->name = was;
+    printf("%s", (char *) xmlbuff);
+    xmlFree(xmlbuff);
+}
 
 /*
  * struct _xmlSchemaAnnot {
@@ -170,6 +191,7 @@ xmlNotifyValidatedElement* schema_annotation_callback(void *handle, xmlNodePtr n
 	return NULL;
 
     printf("\noooooooooooo %s: %p \"%s\"\n", __FUNCTION__, handle, content);
+    /* dump_doc(node->doc, node); */
     walk_doc_tree(node, 0);
     printf("\n");
 
@@ -198,7 +220,8 @@ xmlParserErrors instance_annotation_callback(void *handle, xmlNodePtr node)
     assert(path != NULL);
 
     printf("\noooooooooooo %s: %p\n", __FUNCTION__, handle);
-    walk_doc_tree(node, 0);
+    dump_doc(node->doc, node);
+    /* walk_doc_tree(node, 0); */
     printf("\n");
     xpathCtx->node = node;
     xpathObj = xmlXPathEvalExpression(path, xpathCtx);
@@ -228,8 +251,20 @@ xmlChar* Ages[] = {BAD_CAST "44", BAD_CAST "88"};
 genContext GenContext = {2, Fnames, 0, Ages, 0};
 
 xmlGenerateElement generation_callback;
-xmlNodePtr generation_callback(void * handle, xmlNodePtr parent, void* ctxt) {
-    return NULL;
+xmlNodePtr generation_callback(void * handle, xmlNodePtr node, void* ctxt) {
+    printf("\noooooooooooo %s: %p\n", __FUNCTION__, handle);
+
+    xmlSetTreeDoc(node, (xmlDocPtr)ctxt);
+    if (xmlStrEqual(node->name, BAD_CAST "people"))
+	xmlDocSetRootElement(node->doc, node);
+
+    dump_doc(node->doc, node);
+
+    if (xmlStrEqual(node->name, BAD_CAST "fname")) {
+	printf("here!\n");
+	return (xmlNodePtr) xmlNewNsProp(node->parent, node->ns, node->name, BAD_CAST "bob");
+    }
+    return node;
 }
 
 int
@@ -250,7 +285,7 @@ main(int argc, char *argv[])
 	    return ret;
     return 0;
 }
-
+int SKIP = 0;
 int
 test (const char* base) {
     xmlDocPtr docPtr = NULL;
@@ -295,7 +330,7 @@ test (const char* base) {
         }
     }
 
-    {
+    if (!SKIP) {
         /* There is no visibility into schemaCtxt. */
 	xmlSchemaValidCtxtPtr schemaCtxt;
 	int ret;
@@ -340,30 +375,18 @@ test (const char* base) {
 				    (xmlSchemaValidityErrorFunc) fprintf,
 				    (xmlSchemaValidityWarningFunc) fprintf,
 				    stdout);
-	    xmlSchemaSetGeneratorCallback(schemaCtxt, &generation_callback, NULL);
+	    xmlSchemaSetGeneratorCallback(schemaCtxt, BAD_CAST "people", NULL, &generation_callback, newDoc);
 	    ret = xmlSchemaValidateDoc(schemaCtxt, newDoc);
-	    if (ret == 0)
-		;
-	    else if (ret > 0)
+	    if (ret == 0) {
+/* 		xmlDocSetRootElement(newDoc, vctxt->node); */
+		dump_doc(newDoc, NULL);
+	    } else if (ret > 0)
 		printf("%s fails to validate\n", filename);
 	    else
 		printf("%s validation generated an internal error\n",
 		       filename);
 	    xmlSchemaFreeValidCtxt(schemaCtxt);
 	    printf("\n<---- Schema read!\n\n");
-	}
-
-	if (0) {
-	    xmlNodePtr root = generate(wxschemas, BAD_CAST "people", NULL, generation_callback);
-	    xmlDocSetRootElement(newDoc, root);
-	    {
-		xmlChar *xmlbuff;
-		int buffersize;
-		xmlDocDumpFormatMemory(newDoc, &xmlbuff, &buffersize, 1);
-		printf("%s", (char *) xmlbuff);
-		xmlFree(xmlbuff);
-	    }
-	    walk_doc_tree(root, 0);
 	}
 
 	{

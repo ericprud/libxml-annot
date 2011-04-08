@@ -263,15 +263,19 @@ XMLPUBFUN void XMLCALL
             xmlSchemaSetParserAnnotation(xmlSchemaParserCtxtPtr ctxt,
 					 xmlAnnotationParseEvent* annot,
 					 void *ctx);
-
+#if 0
+/* Possible API for notifying after validating each element. */
 XMLPUBFUN void XMLCALL
             xmlSchemaSetValidNotification
                                         (xmlSchemaValidCtxtPtr ctxt,
 					 xmlNotifyValidatedElement gen,
 					 void *ctx);
+#endif
 XMLPUBFUN void XMLCALL
             xmlSchemaSetGeneratorCallback
                                         (xmlSchemaValidCtxtPtr ctxt,
+					 const xmlChar * name,
+					 xmlNsPtr ns,
 					 xmlGenerateElement gen,
 					 void *ctx);
 

@@ -3706,10 +3706,10 @@ xmlRegCompactPushString(xmlRegExecCtxtPtr exec,
 	target = comp->compact[state * (comp->nbstrings + 1) + i + 1];
 	if ((target > 0) && (target <= comp->nbstates)) {
 	    target--; /* to avoid 0 */    
-	    if (xmlRegStrEqualWildcard(comp->stringMap[i], value)) {
+	    if (value == V_explore || xmlRegStrEqualWildcard(comp->stringMap[i], value)) {
 		exec->index = target;		
 		if ((exec->callback != NULL) && (comp->transdata != NULL)) {
-		    exec->callback(exec->data, value,
+		    exec->callback(exec->data, value == V_explore ? comp->stringMap[i] : value,
 			  comp->transdata[state * comp->nbstrings + i], data);
 		}
 #ifdef DEBUG_PUSH
@@ -3912,7 +3912,10 @@ xmlRegExecPushStringInternal(xmlRegExecCtxtPtr exec, const xmlChar *value,
 		exec->status = -2;
 		break;
 	    } else if (value != NULL) {
-		ret = xmlRegStrEqualWildcard(atom->valuep, value);
+		if (value == V_explore)
+		    ret = 1;
+		else
+		    ret = xmlRegStrEqualWildcard(atom->valuep, value);
 		if (atom->neg) {
 		    ret = !ret;
 		    if (!compound)
@@ -3998,10 +4001,12 @@ xmlRegExecPushStringInternal(xmlRegExecCtxtPtr exec, const xmlChar *value,
 	    }
 	    if (ret == 1) {
 		if ((exec->callback != NULL) && (atom != NULL) &&
-		    (data != NULL) && (value != V_explore)) {
-		    exec->callback(exec->data, atom->valuep,
-			           atom->data, data);
+		    (data != NULL)) {
+		    ret = exec->callback(exec->data, atom->valuep,
+					 atom->data, data);
 		}
+	    }
+	    if (ret == 1) {
 		if (exec->state->nbTrans > exec->transno + 1) {
 		    if (exec->inputStackNr <= 0) {
 			xmlFARegExecSaveInputString(exec, value, data);

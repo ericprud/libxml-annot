@@ -974,11 +974,16 @@ struct _xmlSchemaValidCtxt {
     xmlSchemaValidityWarningFunc warning; /* the callback in case of warning */
     xmlStructuredErrorFunc serror;
 
+#if 0
+/* Possible API for notifying after validating each element. */
     void *validCtxt;             /* user specific validation context */
     xmlNotifyValidatedElement* validCallback;   /* callback after validating element */
+#endif
 
     void *genCtxt;             /* user specific generation context */
     xmlGenerateElement* genCallback;   /* callback to generate XML nodes */
+    const xmlChar* genRootLocalName;
+    xmlNsPtr genRootNs;
 
     xmlSchemaPtr schema;        /* The schema in use */
     xmlDocPtr doc;
@@ -25118,36 +25123,13 @@ xmlSchemaValidateElemDecl(xmlSchemaValidCtxtPtr vctxt)
     vctxt->inode->typeDef = actualType;
 #ifndef DISABLE_NEW_STUFF
 
-    {
-#if 0
-        xmlNodePtr elem;
-
-        printf("\n======> %s: There's an element here!\n", __FUNCTION__);
-        printf("        elem at %p\n", (void *)elemDecl);
-        printf("        elem name: \"%s\"\n", elemDecl->name);
-        printf("        annot ptr: %p\n", (void *)elemDecl->annot);
-
-        if (elemDecl->annot != NULL) {
-            elem = elemDecl->annot->content->parent;
-            printf("        contorted elem = %p\n", (void *)elem);
-#endif
-            if (elemDecl->validation_callback != NULL) {
-#if 0
-                printf("===============> Found an instance callback!\n");
-#endif
-                xmlParserErrors ret =
-		    elemDecl->validation_callback(elemDecl, vctxt->inode->node);
-		if (ret != XML_ERR_OK)
-		    return ret;
-            }
-#if 0
- else
-                printf("===============> DID NOT find an instance callback!\n");
-        } else
-            printf("No annotation found here.\n");
-        printf("\n");
-#endif
+    if (elemDecl->validation_callback != NULL && vctxt->genCallback == NULL) {
+	xmlParserErrors ret =
+	    elemDecl->validation_callback(elemDecl, vctxt->inode->node);
+	if (ret != XML_ERR_OK)
+	    return ret;
     }
+
 #endif /* DISABLE_NEW_STUFF */
 
 
@@ -25307,6 +25289,55 @@ xmlSchemaVAttributesComplex(xmlSchemaValidCtxtPtr vctxt)
 	    iattr->decl = attrDecl;
 	    iattr->typeDef = attrDecl->subtypes;
 	    break;
+	}
+
+	if (vctxt->genCallback != NULL && !found) {
+	    xmlNsPtr ns = NULL;
+	    xmlAttrPtr n;
+	    xmlAttrPtr r;
+	    /* s/iattr->nsName/attrDecl->refNs/ ? */
+	    if (attrDecl->refNs != NULL) {
+		xmlNodePtr parent = NULL;
+		xmlSchemaNodeInfoPtr ielem = vctxt->elemInfos[vctxt->depth];
+		if (ielem && ielem->node && ielem->node->doc)
+		    parent = ielem->node;
+		else
+		    goto internal_error;
+		ns = xmlSearchNsByHref(parent->doc, parent, attrDecl->refNs);
+		{ /* copied from +315lines */
+		    if (ns == NULL) {
+			xmlChar prefix[12];
+			int counter = 0;
+
+			/*
+			* Create a namespace declaration on the validation
+			* root node if no namespace declaration is in scope.
+			*/
+			do {
+			    snprintf((char *) prefix, 12, "p%d", counter++);
+			    ns = xmlSearchNs(parent->doc,
+				parent, BAD_CAST prefix);
+			    if (counter > 1000) {
+				VERROR_INT(
+				    "xmlSchemaVAttributesComplex",
+				    "could not compute a ns prefix for a "
+				    "default/fixed attribute");
+				/* if (normValue != NULL)
+				   xmlFree(normValue); */
+				goto internal_error;
+			    }
+			} while (ns != NULL);
+			ns = xmlNewNs(vctxt->validationRoot,
+			    attrDecl->refNs, BAD_CAST prefix);
+		    }
+		}
+	    }
+	    n = xmlNewNsProp(vctxt->node /* @@null */, ns, attrDecl->name, NULL);
+	    r = (xmlAttrPtr)(*vctxt->genCallback)(vctxt->inode->decl, (xmlNodePtr)n, vctxt->genCtxt);
+	    if (n != r)
+		xmlFreeProp(n);
+	    if (r != NULL)
+		found = 1;
 	}
 
 	if (found)
@@ -26005,6 +26036,63 @@ xmlSchemaVContentModelCallback(xmlSchemaValidCtxtPtr vctxt ATTRIBUTE_UNUSED,
 }
 
 static int
+xmlSchemaEContentModelCallback(xmlSchemaValidCtxtPtr vctxt ATTRIBUTE_UNUSED,
+			       const xmlChar * name ATTRIBUTE_UNUSED,
+			       xmlSchemaElementPtr item,
+			       xmlSchemaNodeInfoPtr inode)
+{
+    xmlSchemaElementPtr elemDecl;
+    xmlNodePtr gen, cb;
+    xmlNsPtr ns = NULL;
+
+    elemDecl = inode->decl;
+    inode->decl = item;
+
+    if (inode->nsName) { /* @@!! XML_REG_STRING_SEPARATOR | */
+	xmlNodePtr copy = xmlDocCopyNode(vctxt->inode->decl->node, vctxt->doc, 2);
+	ns = xmlSearchNsByHref(vctxt->doc, copy, inode->nsName);
+	xmlFreeNode(copy);
+/* 	xmlNsPtr orig = xmlSearchNsByHref(vctxt->inode->decl->node->doc, vctxt->inode->decl->node, inode->nsName); */
+/* 	ns = xmlNewReconciliedNs(vctxt->doc, vctxt->node, orig); */
+    }
+    gen = xmlNewNode(ns, name);
+    xmlAddChild(vctxt->node, gen);
+
+    cb = (*vctxt->genCallback)(
+	/* vctxt->inode->decl, */
+	elemDecl,
+	gen /* valRoot */, vctxt->genCtxt);
+    if (gen != cb) {
+	xmlFreeNode(gen);
+	gen = cb;
+    }
+    if (gen != NULL) {
+	vctxt->node = gen;
+    }
+
+#ifdef DEBUG_CONTENT
+    {
+	xmlChar *str = NULL;
+
+	if (item->type == XML_SCHEMA_TYPE_ELEMENT) {
+	    xmlGenericError(xmlGenericErrorContext,
+		"AUTOMATON callback for '%s' [declaration]\n",
+		xmlSchemaFormatQName(&str,
+		inode->localName, inode->nsName));
+	} else {
+	    xmlGenericError(xmlGenericErrorContext,
+		    "AUTOMATON callback for '%s' [wildcard]\n",
+		    xmlSchemaFormatQName(&str,
+		    inode->localName, inode->nsName));
+
+	}
+	FREE_AND_NULL(str)
+    }
+#endif
+    return 1;
+}
+
+static int
 xmlSchemaValidatorPushElem(xmlSchemaValidCtxtPtr vctxt)
 {
     vctxt->inode = xmlSchemaGetFreshElemInfo(vctxt);
@@ -26525,6 +26613,42 @@ xmlSchemaValidateChildElem(xmlSchemaValidCtxtPtr vctxt)
 
     ptype = pielem->typeDef;
 
+    {
+	if (vctxt->genCallback != NULL) {
+	    /* xmlSchemaNodeInfoPtr pielem = vctxt->elemInfos[vctxt->depth]; */
+	    xmlRegExecCtxtPtr regexCtxt = pielem->regexCtxt;
+	    xmlChar *values[10];
+	    int terminal, nbval = 10, nbneg;
+	    int cbret;
+
+	    if (regexCtxt == NULL) { /* T_CREATE_AUTOMATA_CONTEXT */
+		regexCtxt = xmlRegNewExecCtxt(ptype->contModel,
+		    (xmlRegExecCallbacks) xmlSchemaEContentModelCallback,
+		    vctxt);
+		pielem->regexCtxt = regexCtxt;
+	    }
+	    /* vctxt->node = node; */
+	    cbret = xmlRegExecPushString2(regexCtxt,
+		V_explore,
+		NULL,
+		vctxt->inode);
+	    if (cbret < 0) {
+		xmlRegExecErrInfo(regexCtxt, NULL, &nbval, &nbneg,
+		    &values[0], &terminal);
+		xmlSchemaComplexTypeErr(ACTXT_CAST vctxt,
+		    XML_SCHEMAV_ELEMENT_CONTENT, NULL,NULL,
+		    "This element is not generatable",
+		    nbval, nbneg, values);
+		ret = vctxt->err;
+	    }
+	    if (cbret != 1) {
+		return 1; /* signal failure. */
+/* 		node = vctxt->node; */
+/* 		continue; */
+	    }
+	}
+    }
+
     if (ptype->builtInType == XML_SCHEMAS_ANYTYPE) {
 	/*
 	* Workaround for "anyType": we have currently no content model
@@ -26613,7 +26737,7 @@ xmlSchemaValidateChildElem(xmlSchemaValidCtxtPtr vctxt)
 	    }
 
 	    regexCtxt = pielem->regexCtxt;
-	    if (regexCtxt == NULL) {
+	    if (regexCtxt == NULL) { /* @@ T_CREATE_AUTOMATA_CONTEXT */
 		/*
 		* Create the regex context.
 		*/
@@ -26632,7 +26756,7 @@ xmlSchemaValidateChildElem(xmlSchemaValidCtxtPtr vctxt)
 #endif
 	    }
 
-	    /*
+	    /* @@1
 	    * SPEC (2.4) "If the {content type} is element-only or mixed,
 	    * then the sequence of the element information item's
 	    * element information item [children], if any, taken in
@@ -26640,10 +26764,13 @@ xmlSchemaValidateChildElem(xmlSchemaValidCtxtPtr vctxt)
 	    * particle, as defined in Element Sequence Locally Valid
 	    * (Particle) (�3.9.4)."
 	    */
-	    ret = xmlRegExecPushString2(regexCtxt,
-		vctxt->inode->localName,
-		vctxt->inode->nsName,
-		vctxt->inode);
+	    if (vctxt->genCallback == NULL)
+		ret = xmlRegExecPushString2(regexCtxt,
+		    vctxt->inode->localName,
+		    vctxt->inode->nsName,
+		    vctxt->inode);
+	    else
+		ret = 1;
 #ifdef DEBUG_AUTOMATA
 	    if (ret < 0)
 		xmlGenericError(xmlGenericErrorContext,
@@ -26908,9 +27035,26 @@ xmlSchemaValidateElem(xmlSchemaValidCtxtPtr vctxt)
 	/*
 	* Get the declaration of the validation root.
 	*/
-	vctxt->inode->decl = xmlSchemaGetElem(vctxt->schema,
-	    vctxt->inode->localName,
-	    vctxt->inode->nsName);
+	if (vctxt->inode->node == NULL) { /* @@ could also tweak node at T_NO_NODE */
+	    vctxt->inode->decl = xmlSchemaGetElem(vctxt->schema,
+		vctxt->genRootLocalName,
+		vctxt->genRootNs ? vctxt->genRootNs->href : NULL);
+	    {
+		xmlNodePtr r;
+		vctxt->node = vctxt->elemInfos[0]->node = xmlNewNode(vctxt->genRootNs, vctxt->genRootLocalName); /* c.f. T_NO_NODE */
+		r = (*vctxt->genCallback)(
+		    vctxt->inode->decl,
+		    vctxt->node, vctxt->genCtxt);
+		if (vctxt->node != r) {
+		    xmlFreeNode(vctxt->node);
+		    vctxt->node = r;
+		}
+	    }
+	}
+	else
+	    vctxt->inode->decl = xmlSchemaGetElem(vctxt->schema,
+		vctxt->inode->localName,
+		vctxt->inode->nsName);
 	if (vctxt->inode->decl == NULL) {
 	    ret = XML_SCHEMAV_CVC_ELT_1;
 	    VERROR(ret, NULL,
@@ -27863,8 +28007,10 @@ xmlSchemaSetParserAnnotation(xmlSchemaParserCtxtPtr ctxt,
     ctxt->annotCtxt = ctx;
 }
 
+#if 0
+/* Possible API for notifying after validating each element. */
 /**
- * xmlSchemaSetGeneratorCallback:
+ * xmlSchemaSetValidNotification:
  * @ctxt:  a schema validation context
  * @err:  the XML node generator function
  * @ctx: the function's context
@@ -27880,6 +28026,7 @@ xmlSchemaSetValidNotification(xmlSchemaValidCtxtPtr ctxt,
     ctxt->validCallback = gen;
     ctxt->validCtxt = ctx;
 }
+#endif
 
 /**
  * xmlSchemaSetGeneratorCallback:
@@ -27891,12 +28038,15 @@ xmlSchemaSetValidNotification(xmlSchemaValidCtxtPtr ctxt,
  */
 void
 xmlSchemaSetGeneratorCallback(xmlSchemaValidCtxtPtr ctxt,
+			      const xmlChar * name, xmlNsPtr ns,
 			      xmlGenerateElement gen, void *ctx)
 {
     if (ctxt == NULL)
         return;
     ctxt->genCallback = gen;
     ctxt->genCtxt = ctx;
+    ctxt->genRootLocalName = name;
+    ctxt->genRootNs = ns;
 }
 
 static int
@@ -27910,7 +28060,7 @@ xmlSchemaVDocWalk(xmlSchemaValidCtxtPtr vctxt)
 
     /* DOC VAL TODO: Move this to the start function. */
     valRoot = xmlDocGetRootElement(vctxt->doc);
-    if (valRoot == NULL) {
+    if (valRoot == NULL && vctxt->genCallback == NULL) {
 	/* VAL TODO: Error code? */
 	VERROR(1, NULL, "The document has no document element");
 	return (1);
@@ -27918,10 +28068,11 @@ xmlSchemaVDocWalk(xmlSchemaValidCtxtPtr vctxt)
     vctxt->depth = -1;
     vctxt->validationRoot = valRoot;
     node = valRoot;
-    while (node != NULL) {
+
+    while (node != NULL || vctxt->genCallback != NULL) {
 	if ((vctxt->skipDepth != -1) && (vctxt->depth >= vctxt->skipDepth))
 	    goto next_sibling;
-	if (node->type == XML_ELEMENT_NODE) {
+	if (vctxt->genCallback != NULL || node->type == XML_ELEMENT_NODE) {
 
 	    /*
 	    * Init the node-info.
@@ -27930,46 +28081,54 @@ xmlSchemaVDocWalk(xmlSchemaValidCtxtPtr vctxt)
 	    if (xmlSchemaValidatorPushElem(vctxt) == -1)
 		goto internal_error;
 	    ielem = vctxt->inode;
-	    ielem->node = node;
-	    ielem->nodeLine = node->line;
-	    ielem->localName = node->name;
-	    if (node->ns != NULL)
-		ielem->nsName = node->ns->href;
-	    ielem->flags |= XML_SCHEMA_ELEM_INFO_EMPTY;
-	    /*
-	    * Register attributes.
-	    * DOC VAL TODO: We do not register namespace declaration
-	    * attributes yet.
-	    */
-	    vctxt->nbAttrInfos = 0;
-	    if (node->properties != NULL) {
-		attr = node->properties;
-		do {
-		    if (attr->ns != NULL)
-			nsName = attr->ns->href;
-		    else
-			nsName = NULL;
-		    ret = xmlSchemaValidatorPushAttribute(vctxt,
-			(xmlNodePtr) attr,
-			/*
-			* Note that we give it the line number of the
-			* parent element.
-			*/
-			ielem->nodeLine,
-			attr->name, nsName, 0,
-			xmlNodeListGetString(attr->doc, attr->children, 1), 1);
-		    if (ret == -1) {
-			VERROR_INT("xmlSchemaDocWalk",
-			    "calling xmlSchemaValidatorPushAttribute()");
-			goto internal_error;
-		    }
-		    attr = attr->next;
-		} while (attr);
+	    if (node == NULL) { /* @@ T_NO_NODE */
+/* 		ielem->localName = vctxt->genRootLocalName; */
+/* 		ielem->nsName = vctxt->genRootNs ? vctxt->genRootNs->href : NULL; */
+	    } else {
+		ielem->node = node;
+		ielem->nodeLine = node->line;
+		ielem->localName = node->name;
+		if (node->ns != NULL)
+		    ielem->nsName = node->ns->href;
+		ielem->flags |= XML_SCHEMA_ELEM_INFO_EMPTY;
+		/*
+		 * Register attributes.
+		 * DOC VAL TODO: We do not register namespace declaration
+		 * attributes yet.
+		 */
+		vctxt->nbAttrInfos = 0;
+		if (node->properties != NULL) {
+		    attr = node->properties;
+		    do {
+			if (attr->ns != NULL)
+			    nsName = attr->ns->href;
+			else
+			    nsName = NULL;
+			ret = xmlSchemaValidatorPushAttribute(vctxt,
+							      (xmlNodePtr) attr,
+							      /*
+							       * Note that we give it the line number of the
+							       * parent element.
+							       */
+							      ielem->nodeLine,
+							      attr->name, nsName, 0,
+							      xmlNodeListGetString(attr->doc, attr->children, 1), 1);
+			if (ret == -1) {
+			    VERROR_INT("xmlSchemaDocWalk",
+				       "calling xmlSchemaValidatorPushAttribute()");
+			    goto internal_error;
+			}
+			attr = attr->next;
+		    } while (attr);
+		}
 	    }
 	    /*
 	    * Validate the element.
 	    */
 	    ret = xmlSchemaValidateElem(vctxt);
+	    if (vctxt->genCallback != NULL)
+		node = vctxt->inode->node;
+	    
 	    if (ret != 0) {
 		if (ret == -1) {
 		    VERROR_INT("xmlSchemaDocWalk",
@@ -28023,10 +28182,16 @@ xmlSchemaVDocWalk(xmlSchemaValidCtxtPtr vctxt)
 	/*
 	* Walk the doc.
 	*/
+	if (vctxt->genCallback != NULL &&
+	    /* node->type == XML_ELEMENT_NODE && */
+	    vctxt->elemInfos[vctxt->depth]->typeDef->contModel != NULL && 
+	    vctxt->inode->typeDef->contentType == XML_SCHEMA_CONTENT_ELEMENTS)
+	    continue;
 	if (node->children != NULL) {
 	    node = node->children;
 	    continue;
 	}
+
 leave_node:
 	if (node->type == XML_ELEMENT_NODE) {
 	    /*
@@ -28217,7 +28382,7 @@ xmlSchemaValidateDoc(xmlSchemaValidCtxtPtr ctxt, xmlDocPtr doc)
 
     ctxt->doc = doc;
     ctxt->node = xmlDocGetRootElement(doc);
-    if (ctxt->node == NULL) {
+    if (ctxt->node == NULL && ctxt->genCallback == NULL) {
         xmlSchemaCustomErr(ACTXT_CAST ctxt,
 	    XML_SCHEMAV_DOCUMENT_ELEMENT_MISSING,
 	    (xmlNodePtr) doc, NULL,
@@ -28885,62 +29050,10 @@ xmlSchemaValidCtxtGetParserCtxt(xmlSchemaValidCtxtPtr ctxt)
     return (ctxt->parserCtxt);
 }
 
-
-static int
-xmlSchemaEContentModelCallback(xmlSchemaValidCtxtPtr vctxt ATTRIBUTE_UNUSED,
-			       const xmlChar * name ATTRIBUTE_UNUSED,
-			       xmlSchemaElementPtr item,
-			       xmlSchemaNodeInfoPtr inode)
-{
-    inode->decl = item;
-#ifdef DEBUG_CONTENT
-    {
-	xmlChar *str = NULL;
-
-	if (item->type == XML_SCHEMA_TYPE_ELEMENT) {
-	    xmlGenericError(xmlGenericErrorContext,
-		"AUTOMATON callback for '%s' [declaration]\n",
-		xmlSchemaFormatQName(&str,
-		inode->localName, inode->nsName));
-	} else {
-	    xmlGenericError(xmlGenericErrorContext,
-		    "AUTOMATON callback for '%s' [wildcard]\n",
-		    xmlSchemaFormatQName(&str,
-		    inode->localName, inode->nsName));
-
-	}
-	FREE_AND_NULL(str)
-    }
-#endif
-    return 1;
-}
-
+/* @@ */
 #define NI 		fprintf(stderr, "__FUNCTION__/%d not implemented at __FILE__:__LINE__", ptype->contentType); \
 		exit(1)
 
-
-xmlNodePtr
-generate(xmlSchemaPtr schema,
-		    const xmlChar * name, xmlNsPtr ns) {
-    xmlNodePtr ret;
-    xmlSchemaElementPtr root =
-	xmlSchemaGetElem(schema, name, ns ? ns->href : NULL);
-    if (root == NULL) {
-	/* VERROR(ret, NULL,   ) */
-	printf(
-	       "No matching global declaration available "
-	       "for the generation root");
-    }
-    {
-	xmlBufferPtr xmlExpBuf = xmlBufferCreate();
-	xmlRegexpPrint(stdout, root->subtypes->contModel);
-/* 	xmlExpDump(xmlExpBuf, root->subtypes->contModel); */
-	printf("root: %s\n",
-	       (const char *) xmlBufferContent(xmlExpBuf));
-    }
-    ret = xmlNewNode(ns, name);
-    ret->line = root->node->line;
-    return ret;
 
 #if 0
 
@@ -28979,7 +29092,6 @@ xmlNewChild(xmlNodePtr parent, xmlNsPtr ns, const xmlChar *name, const xmlChar *
 xmlAttrPtr
 ret->line = 
 #endif
-}
 
 
 #define bottom_xmlschemas
