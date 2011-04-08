@@ -1,0 +1,92 @@
+Content-Type: text/enriched
+Text-Width: 70
+
+ret = xmlSchemaVDocWalk(vctxt);                                         	|			
+node = valRoot = xmlDocGetRootElement(vctxt->doc);				|node = valRoot = people
+vctxt->depth = -1;								|			
+<x-color><param>Purple</param>while</x-color> (node != <x-color><param>CadetBlue</param>NULL</x-color> || vctxt->genCallback != <x-color><param>CadetBlue</param>NULL</x-color>) {				|			
+    <x-color><param>Purple</param>if</x-color> ((vctxt->skipDepth != -1) && (vctxt->depth >= vctxt->skipDepth))		|			
+	<x-color><param>Purple</param>goto</x-color> <x-color><param>CadetBlue</param>next_sibling</x-color>;							|			
+    <x-color><param>Purple</param>if</x-color> (node->type == XML_ELEMENT_NODE) {					|			
+	vctxt->elemInfos[++vctxt->depth] = vctxt->inode = new xmlSchemaNodeInfo	|			
+        vctxt->inode->node = node						|			
+        push each attr onto vctxt->attrInfos					|			
+	if (xmlSchemaValidateElem(vctxt))					|			
+										|			
+	{									|			
+	    <x-color><param>Purple</param>if</x-color> (vctxt->depth > 0) {						|			
+		ret = xmlSchemaValidateChildElem(vctxt);			|      (node = people)	
+										|			
+		{								|			
+		    pielem = vctxt->elemInfos[vctxt->depth -1]->typeDef		|			
+		    <x-color><param>Purple</param>switch</x-color> (ptype->contentType) 				|			
+		        <x-color><param>Purple</param>case</x-color> XML_SCHEMA_CONTENT_ELEMENTS: 			|			
+			test regexCtxt = xmlRegNewExecCtxt(ptype->contModel,)	|			
+                        xmlRegExecPushString2(regexCtxt, lName, nsName, inode)	|
+		}								|			
+	    } <x-color><param>Purple</param>else</x-color> {								|			
+		vctxt->inode->decl = xmlSchemaGetElem(vctxt->schema,		|people			
+			vctxt->inode->localName,				|			
+			vctxt->inode->nsName); <x-color><param>Firebrick</param>/* </x-color><x-color><param>black</param><bold>subtypes->contModel</bold></x-color><x-color><param>Firebrick</param> loaded */</x-color>	|			
+	    }									|			
+	    ret = xmlSchemaValidateElemDecl(vctxt);				|			
+										|			
+	    {									|			
+	        vctxt->inode->typeDef = elemDecl->subtypes <x-color><param>Firebrick</param>/* visible */</x-color>	|			
+	    }									|			
+										|			
+	<x-color><param>CadetBlue</param>type_validation</x-color>:							|			
+	    ret = xmlSchemaVAttributesComplex(vctxt);				|			
+		<x-color><param>Purple</param>if</x-color> (node->children != <x-color><param>CadetBlue</param>NULL</x-color>)					|			
+		    node = node->children;					|  ?? node: "\n  "	
+		    <x-color><param>Purple</param>continue</x-color>;							|			
+	}									|			
+										|			
+	    <x-color><param>Purple</param>goto</x-color> <x-color><param>CadetBlue</param>leave_node</x-color>;							|			
+    } <x-color><param>Purple</param>else</x-color> <x-color><param>Purple</param>if</x-color> (node->type == XML_TEXT_NODE)					|			
+    else									|			
+	<x-color><param>Purple</param>goto</x-color> <x-color><param>CadetBlue</param>leave_node</x-color>;							|			
+    <x-color><param>Purple</param>if</x-color> (node->children != <x-color><param>CadetBlue</param>NULL</x-color>)							|			
+	node = node->children;							|  node = "\n  "
+	<x-color><param>Purple</param>continue</x-color>;								|			
+<x-color><param>CadetBlue</param>leave_node</x-color>:									|			
+    <x-color><param>Purple</param>if</x-color> (node->type == XML_ELEMENT_NODE) {					|			
+	ret = xmlSchemaValidatorPopElem(vctxt);					|			
+										|
+{										|
+    xmlRegExecPushString(inode->regexCtxt, <x-color><param>CadetBlue</param>NULL</x-color>, <x-color><param>CadetBlue</param>NULL</x-color>)				|
+}										|
+										|
+	node = valRoot								|			
+<x-color><param>CadetBlue</param>next_sibling</x-color>:									|			
+    <x-color><param>Purple</param>if</x-color> (node->next != <x-color><param>CadetBlue</param>NULL</x-color>)							|			
+	node = node->next;							|    node = person	
+    <x-color><param>Purple</param>else								</x-color>	|			
+	node = node->parent;							|                       
+	<x-color><param>Purple</param>goto</x-color> <x-color><param>CadetBlue</param>leave_node</x-color>;                                                	|                       
+
+
+
+@@1:
+	    /* Update <bold>vctxt->inode->decl</bold> if <bold>vctxt->inode</bold> (the definition of
+            * the child we are validating) is a valid next state in the
+            * parent's content model.
+            <x-color><param>Firebrick</param>*
+	    * SPEC (2.4) "If the {content type} is element-only or mixed,
+	    * then the sequence of the element information item's
+	    * element information item [children], if any, taken in
+	    * order, is �valid� with respect to the {content type}'s
+	    * particle, as defined in Element Sequence Locally Valid
+	    * (Particle) (�3.9.4)."
+	    */</x-color>
+
+
+@@2:
+	<x-color><param>Firebrick</param>/*
+	* Validate this element against the content model
+	* of the parent.</x-color>
+	* Sets <bold>vctxt->inode->decl</bold> to the type declaration of
+        * <bold>vctxt->inode</bold> (the child we are validating).<x-color><param>Firebrick</param>
+	*/</x-color>
+
+
