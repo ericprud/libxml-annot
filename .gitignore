@@ -98,3 +98,6 @@ xmlconf
 xmllint
 xstc/Makefile
 xstc/Makefile.in
+.gdbinit
+TAGS
+core
